@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mv /Users/kangxin/Documents/KonceptOS/konceptos-cli/*.html /Users/kangxin/Documents/KonceptOS/examples/)",
+      "Bash(mv /Users/kangxin/Documents/KonceptOS/konceptos-cli/*.json /Users/kangxin/Documents/KonceptOS/examples/)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth:*)",
+      "Bash(git remote:*)",
+      "Bash(gh pr:*)",
+      "Bash(brew install:*)",
+      "Bash(git reset:*)",
+      "Bash(chmod +x /Users/kangxin/Documents/KonceptOS/cli/bin/cli.js)",
+      "Bash(npm link:*)",
+      "Bash(node --check cli/src/modules/seed/index.js)",
+      "Bash(node -e \"console.log\\(process.version\\)\")",
+      "Bash(node -e ':*)",
+      "Bash(node)",
+      "Bash(node --check cli/src/core/seed.js)",
+      "Bash(node --check cli/src/modules/viewer/index.js)",
+      "Bash(node --check cli/src/cli.js)",
+      "Bash(konceptos --help)",
+      "Bash(konceptos st:*)",
+      "Bash(konceptos llm:*)",
+      "Bash(konceptos seed:*)",
+      "Bash(konceptos build:*)",
+      "Bash(node scripts/version.js 2.0.0 \"CLI 重构 + 多文件构建 + 测试反馈\")"
+    ],
+    "additionalDirectories": [
+      "/Users/kangxin/Documents/KonceptOS/konceptos-cli",
+      "/Users/kangxin/Documents/KonceptOS",
+      "/Users/kangxin/Documents/KonceptOS/examples",
+      "/Users/kangxin/Documents/Konceptos-cli/src/modules/viewer",
+      "/private/tmp/test_build"
+    ]
+  }
+}
