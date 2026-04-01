@@ -6,10 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [2.0.0] - 2026-04-01
 
-### CLI 重构 + 多文件构建 + 测试反馈
-
-## [2.0.0] - 2026-04-01
-
 ### Added
 
 #### CLI 重构
@@ -22,11 +18,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Viewer**: ctx, st, rw, flows, order, conflicts, groups, lat, concept, ts
 - **DAG**: commit, goto, undo, dag, path, diff
 - **Seed**: seed load/save/tree/conv/set
-- **Refine**: resolve obj/attr, evolve
+- **Refine**: resolve obj|attr, evolve
 - **Impl**: impl, impls, impl show, ready, assemble, analyze
 - **Builder**: build (全量构建)
 - **FileOps**: save, open, export, compute
 - **LLM**: llm analyze/ask/chat
+
+#### 多文件构建
+- 基于 coding_groups 生成多文件项目结构
+- channels.js, contracts.js, store.js, modules/ 分开生成
+- 生成 vitest/jest 测试配置和测试骨架
+
+#### 测试反馈
+- 测试运行器：运行 vitest/jest
+- 错误解析器：提取语法错误、测试失败、类型错误
+- 反馈循环：自动将错误反馈给 LLM 重新生成
+- 重试机制：默认 3 次重试
 
 #### 交互优化
 - 所有修改状态的操作完成后自动输出 ctx 和状态摘要
@@ -42,11 +49,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `package.json` 移至项目根目录
 - CLI 入口改为 `cli/src/cli.js`
 - 包名从 `konceptos-cli` 改为 `konceptos`
+- build 默认输出多文件项目（而非单 HTML）
 
 ### Deprecated
 
 - `cli/src/lib/` (旧代码，待删除)
-- `cli/bin/` (旧入口，待删除)
 
 ---
 
