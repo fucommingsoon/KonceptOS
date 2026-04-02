@@ -1,3 +1,13 @@
+Metadata-Version: 2.4
+Name: konceptos
+Version: 2.1
+Summary: KonceptOS — FCA-based AI code generation framework
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: click
+Dynamic: license-file
+
 # KonceptOS
 
 **Formal Concept Analysis as a Development Operating System**
