@@ -485,3 +485,250 @@ def _build_game_loop_js(engine, order):
         '}',
     ])
     return '\n'.join(loop_lines)
+
+
+# ═══ Artifact Code Generators (template-based, no LLM needed) ═══
+
+def generate_channel_schema_code(engine, channel_name):
+    """Generate TypeScript interface for a channel based on its schema and usage context."""
+    aid = None
+    for a in engine.attributes:
+        if engine.attributes[a]['name'] == channel_name:
+            aid = a
+            break
+    if not aid:
+        return f'// Channel "{channel_name}" not found'
+
+    schema = engine.schemas.get(aid, 'any')
+
+    # Infer TypeScript type from schema or usage
+    if schema and schema != 'any':
+        type_str = _schema_to_ts(schema)
+    else:
+        # Try to infer from which modules read/write this channel
+        readers = engine.readers_of(aid)
+        writers = engine.writers_of(aid)
+        if readers or writers:
+            type_str = _infer_channel_type(channel_name, readers, writers, engine)
+        else:
+            type_str = 'any'
+
+    lines = [
+        f'// Channel schema: {channel_name}',
+        f'// Generated from K artifact (sig: {engine.compute_artifact_sig("channel_schema_" + channel_name)})',
+        f'interface {safe_name(channel_name)} {{',
+    ]
+
+    # Add known fields based on channel semantics
+    if channel_name == 'entity_positions':
+        lines.extend([
+            '  fireboy: Entity;',
+            '  watergirl: Entity;',
+            '}'
+        ])
+    elif channel_name == 'velocity_vectors':
+        lines.extend([
+            '  fireboy: Vec2;',
+            '  watergirl: Vec2;',
+            '}'
+        ])
+    elif channel_name == 'input_keys':
+        lines.extend([
+            '  fireboy: InputState;',
+            '  watergirl: InputState;',
+            '}'
+        ])
+    elif channel_name == 'tile_layout':
+        lines.extend([
+            '  tiles: number[][];',
+            '  width: number;',
+            '  height: number;',
+            '  tileSize: number;',
+            '}'
+        ])
+    elif channel_name == 'hazard_zones':
+        lines.extend([
+            '  lava: Hazard[];',
+            '  water: Hazard[];',
+            '  goo: Hazard[];',
+            '}'
+        ])
+    elif channel_name == 'gem_collection':
+        lines.extend([
+            '  collected: string[];',
+            '  total: number;',
+            '  gems: Gem[];',
+            '}'
+        ])
+    elif channel_name == 'game_state':
+        lines.extend([
+            '  status: "loading" | "playing" | "paused" | "lost" | "won" | "level_complete";',
+            '  currentLevel: number;',
+            '  totalLevels: number;',
+            '  message: string;',
+            '  deaths: number;',
+            '  paused: boolean;',
+            '}'
+        ])
+    elif channel_name == 'level_config':
+        lines.extend([
+            '  level: number;',
+            '  width: number;',
+            '  height: number;',
+            '  gemCount: number;',
+            '  restartCount: number;',
+            '}'
+        ])
+    elif channel_name == 'mechanism_state':
+        lines.extend([
+            '  levers: Lever[];',
+            '  doors: Door[];',
+            '  buttons: Button[];',
+            '  platforms: Platform[];',
+            '}'
+        ])
+    elif channel_name == 'player_state':
+        lines.extend([
+            '  level: number;',
+            '  score: number;',
+            '  lives: number;',
+            '  levelStartTime: number;',
+            '}'
+        ])
+    else:
+        lines.extend([
+            '  // TODO: define fields based on schema: ' + schema,
+            '  [key: string]: any;',
+            '}'
+        ])
+
+    return '\n'.join(lines)
+
+
+def generate_tiles_constants_code(engine):
+    """Generate TILES constants from conventions or default."""
+    conventions = engine.get_all_conventions() or ''
+
+    # Try to parse TILES from conventions
+    import re
+    tiles_match = re.search(r'TILES\s*=\s*\{([^}]+)\}', conventions)
+    if tiles_match:
+        content = tiles_match.group(1)
+        lines = ['// TILES constants (from conventions)']
+        for line in content.split(','):
+            line = line.strip()
+            if ':' in line:
+                name_val = line.split(':')
+                if len(name_val) == 2:
+                    name = name_val[0].strip()
+                    val = name_val[1].strip().rstrip(',')
+                    lines.append(f'const {name} = {val};')
+        return '\n'.join(lines)
+
+    # Default TILES
+    return '''// TILES constants (default)
+const TILES = {
+  EMPTY: 0, WALL: 1, LAVA: 2, WATER: 3, POISON: 4,
+  RED_GEM: 5, BLUE_GEM: 6, FIRE_EXIT: 7, WATER_EXIT: 8, SWITCH: 9
+};'''
+
+
+def generate_module_skeleton_code(engine, module_name):
+    """Generate a module skeleton with type hints based on contract."""
+    oid = None
+    for o in engine.objects:
+        if engine.objects[o]['name'] == module_name:
+            oid = o
+            break
+    if not oid:
+        return f'// Module "{module_name}" not found'
+
+    contract = engine.contract_for(oid)
+    sn = safe_name(module_name)
+
+    lines = [
+        f'// Module skeleton: {module_name}',
+        f'// Contract: reads={contract["reads"]}, writes={contract["writes"]}',
+        f'// Generated from K artifact (sig: {engine.compute_artifact_sig("module_skeleton_" + module_name)})',
+        '',
+        f'const {sn} = {{',
+        f"  name: '{module_name}',",
+        '',
+        '  init(state) {',
+    ]
+
+    # Initialize write channels
+    for ch in contract['writes']:
+        default = _channel_default(ch)
+        lines.append(f"    state.write('{ch}', {default});")
+    for ch in contract.get('readwrites', []):
+        default = _channel_default(ch)
+        lines.append(f"    state.write('{ch}', {default});")
+
+    lines.extend([
+        '  },',
+        '',
+        '  update(state, dt) {',
+        '    // dt: normalized time step (~1.0 at 60fps)',
+    ])
+
+    # Read channels with type hints
+    for ch in contract['reads']:
+        lines.append(f"    const {_safe_var(ch)} = state.read('{ch}');")
+    for ch in contract.get('readwrites', []):
+        lines.append(f"    const {_safe_var(ch)} = state.read('{ch}');")
+
+    lines.extend([
+        '  },',
+        '',
+        '  render(state, ctx) {',
+        f"    const canvas = ctx.canvas;",
+        '    // Draw using state.read() channels',
+        '  }',
+        '};'
+    ])
+
+    return '\n'.join(lines)
+
+
+def _schema_to_ts(schema):
+    """Convert a schema string to TypeScript type."""
+    s = schema.strip()
+    if s in ('number', 'Number'): return 'number'
+    if s in ('string', 'String'): return 'string'
+    if s in ('boolean', 'Boolean'): return 'boolean'
+    if s == 'any': return 'any'
+    if s.startswith('{'): return 'Record<string, any>'
+    if s.startswith('['): return 'any[]'
+    if 'Record<' in s: return 'Record<string, any>'
+    if 'Vec2' in s: return 'Vec2'
+    if 'Entity' in s: return 'Entity'
+    return 'any'
+
+
+def _infer_channel_type(channel_name, readers, writers, engine):
+    """Infer TypeScript type for a channel based on its usage."""
+    # Default fallback
+    return 'any'
+
+
+def _channel_default(channel_name):
+    """Get a sensible JS default value for a channel."""
+    defaults = {
+        'entity_positions': '{ fireboy: {x:100,y:400,vx:0,vy:0}, watergirl: {x:150,y:400,vx:0,vy:0} }',
+        'velocity_vectors': '{ fireboy: {vx:0,vy:0}, watergirl: {vx:0,vy:0} }',
+        'input_keys': '{ fireboy:{left:false,right:false,jump:false}, watergirl:{left:false,right:false,jump:false} }',
+        'tile_layout': '{ tiles:[], width:800, height:480, tileSize:32 }',
+        'hazard_zones': '{ lava:[], water:[], goo:[] }',
+        'gem_collection': '{ collected:[], total:0, gems:[] }',
+        'game_state': '{ status:"playing", currentLevel:1, totalLevels:5, message:"", deaths:0, paused:false }',
+        'level_config': '{ level:1, width:800, height:600, gemCount:10, restartCount:0 }',
+        'mechanism_state': '{ levers:[], doors:[], buttons:[], platforms:[] }',
+        'player_state': '{ level:1, score:0, lives:3, levelStartTime:Date.now() }',
+    }
+    return defaults.get(channel_name, 'null')
+
+
+def _safe_var(channel_name):
+    """Convert channel name to safe JS variable name."""
+    return channel_name.replace('_', '').lower() + 'Val'

@@ -837,15 +837,20 @@ def build(output, auto_test, max_iter, test_hooks):
 @click.option('--review/--no-review', default=True, help='Enable LLM review after each module')
 @click.option('--max-fix', default=2, help='Max fix iterations per module when issues found')
 @click.option('--skip-selenium', is_flag=True, help='Skip Selenium test after build')
-def build2_cmd(output, review, max_fix, skip_selenium):
+@click.option('--use-artifacts/--no-use-artifacts', default=True, help='Use K artifacts (module skeletons) as LLM context')
+def build2_cmd(output, review, max_fix, skip_selenium, use_artifacts):
     """Multi-file build: generate framework + modules + review + fix.
 
     Pipeline:
       1. Generate framework files (framework.js, style.css)
       2. Generate module implementations in topological order
+         (uses K artifacts as context if --use-artifacts)
       3. LLM review each module; if issues found, regenerate with fixes
       4. Assemble into output directory
       5. Optional Selenium test
+
+    Artifacts: Module skeletons are cached in K with SHA256 signatures.
+    K changes invalidate relevant artifact sigs, triggering regeneration.
     """
     import os
     e = _engine(); llm = LLM()
@@ -908,9 +913,25 @@ def build2_cmd(output, review, max_fix, skip_selenium):
 
         prev_impls = e.impls.get(on, [])
 
+        # Try to use existing valid artifact as context
+        artifact_context = ''
+        if use_artifacts:
+            art_key = 'module_skeleton_' + on
+            art = e.get_artifact(art_key)
+            if art:
+                artifact_context = '\n\n// === EXISTING MODULE SKELETON (from K artifact) ===\n%s\n// ===========================================\n' % art['code']
+                _info('  Using existing artifact: %s (sig=%s)' % (art_key, art['sig']))
+            else:
+                # Generate and store skeleton artifact now
+                skeleton_code = codegen.generate_module_skeleton_code(e, on)
+                if skeleton_code and not skeleton_code.startswith('// Module'):
+                    e.set_artifact(art_key, 'module_skeleton', skeleton_code, [on])
+                    artifact_context = '\n\n// === MODULE SKELETON (generated) ===\n%s\n// ======================================\n' % skeleton_code
+                    _info('  Generated skeleton artifact: %s' % art_key)
+
         # Generate module code
         code = llm.build_module(on, e.objects[oid].get('desc', ''), contract_code,
-                                framework_excerpt, conv, upstream, downstream, prev_impls)
+                                framework_excerpt + artifact_context, conv, upstream, downstream, prev_impls)
 
         # Strip markdown fences and export statements (not ES modules, plain <script> tags)
         if code.strip().startswith('```'):
@@ -986,6 +1007,15 @@ def build2_cmd(output, review, max_fix, skip_selenium):
             'comment': 'build2 generated',
             'ts': time.strftime('%H:%M:%S')
         })
+
+        # Update module_skeleton artifact with the final generated code
+        if use_artifacts and len(code) >= 100 and not code.startswith('(HTTP') and not code.startswith('(err'):
+            art_key = 'module_skeleton_' + on
+            deps = [on]
+            contract = e.contract_for(oid)
+            if contract:
+                deps.extend(contract['reads'] + contract['writes'])
+            e.set_artifact(art_key, 'module_skeleton', code, list(set(deps)))
         module_results[on] = {'code': code, 'review': review_result, 'fixed': fixed}
 
     # Step 4: Save workspace with new impls
@@ -1006,6 +1036,125 @@ def build2_cmd(output, review, max_fix, skip_selenium):
             _ok('Selenium tests passed')
         else:
             _warn('Selenium tests failed: %s' % result.to_llm_feedback())
+
+
+# ── Artifacts ──────────────────────────────────────────────────────────────────
+
+@cli.command('artifacts')
+@click.argument('action', default='list', type=click.Choice(['list', 'gen', 'check']))
+@click.argument('artifact_key', required=False)
+@click.option('--all', 'gen_all', is_flag=True, help='Regenerate all artifacts')
+@click.option('--type', 'art_type', default=None, help='Filter by type: channel_schema, module_skeleton, tiles_constants')
+def artifacts_cmd(action, artifact_key, gen_all, art_type):
+    """Manage K artifacts (code产物 with signatures).
+
+    ACTIONS:
+      list    List all artifacts in current K node
+      check   Check which artifacts have stale signatures
+      gen     Generate one or more artifacts
+    """
+    e = _engine()
+
+    if action == 'list':
+        arts = e.list_artifacts()
+        if not arts:
+            _info('No artifacts in current node. Run "k artifacts gen --all" to generate.')
+            return
+        _info('Artifacts in %s (%d):' % (e.current_node, len(arts)))
+        for key, art in sorted(arts):
+            status = e.compute_artifact_sig(key)
+            valid = '✓' if art['sig'] == status else '✗ stale'
+            _info('  [%s] %s (%s) sig=%s ts=%s' % (valid, key, art.get('type', '?'), art['sig'], art.get('ts', '')))
+            if art.get('k_deps'):
+                _info('         deps: %s' % ', '.join(art['k_deps']))
+
+    elif action == 'check':
+        statuses = e.artifact_status()
+        if not statuses:
+            _info('No artifacts to check.')
+            return
+        stale = [(k, t, ts) for k, st, t, ts in statuses if st == 'stale']
+        valid = [(k, t, ts) for k, st, t, ts in statuses if st == 'valid']
+        _info('Artifact status (%s): %d valid, %d stale' % (e.current_node, len(valid), len(stale)))
+        for k, st, t, ts in statuses:
+            icon = '✓' if st == 'valid' else '✗'
+            _info('  [%s] %s (%s) %s' % (icon, k, t, ts))
+
+    elif action == 'gen':
+        to_gen = []
+
+        if gen_all:
+            # Generate all artifact types
+            # channel_schemas for all attributes
+            for aid in sorted(e.attributes):
+                an = e.attributes[aid]['name']
+                to_gen.append(('channel_schema', an, 'channel_schema_' + an))
+            # module_skeletons for all objects
+            for oid in sorted(e.objects):
+                on = e.objects[oid]['name']
+                to_gen.append(('module_skeleton', on, 'module_skeleton_' + on))
+            # tiles_constants
+            to_gen.append(('tiles_constants', 'TILES', 'tiles_constants'))
+        elif artifact_key:
+            # Single artifact
+            if artifact_key.startswith('channel_schema_'):
+                ch = artifact_key.split('_', 2)[2]
+                to_gen.append(('channel_schema', ch, artifact_key))
+            elif artifact_key.startswith('module_skeleton_'):
+                mn = artifact_key.split('_', 2)[2]
+                to_gen.append(('module_skeleton', mn, artifact_key))
+            elif artifact_key == 'tiles_constants':
+                to_gen.append(('tiles_constants', 'TILES', artifact_key))
+            else:
+                _err('Unknown artifact key format. Use: channel_schema_<name>, module_skeleton_<name>, tiles_constants')
+                return
+        else:
+            _err('Specify artifact key or use --all')
+            return
+
+        for art_type_val, target, key in to_gen:
+            if art_type and art_type_val != art_type:
+                continue
+            code = _generate_artifact_code(e, art_type_val, target)
+            if code:
+                deps = _artifact_k_deps(art_type_val, target, e)
+                e.set_artifact(key, art_type_val, code, deps)
+                _ok('Generated: %s (sig=%s)' % (key, e.artifacts[key]['sig']))
+            else:
+                _err('Failed to generate: %s' % key)
+
+        _info('Done. %d artifact(s) generated.' % len(to_gen))
+
+
+def _generate_artifact_code(engine, art_type, target):
+    """Generate artifact code (template-based, no LLM)."""
+    if art_type == 'channel_schema':
+        return codegen.generate_channel_schema_code(engine, target)
+    elif art_type == 'module_skeleton':
+        return codegen.generate_module_skeleton_code(engine, target)
+    elif art_type == 'tiles_constants':
+        return codegen.generate_tiles_constants_code(engine)
+    elif art_type == 'contract_bridge':
+        # contract_bridge is more complex - placeholder for now
+        return '// contract_bridge for %s (not yet implemented)' % target
+    return None
+
+
+def _artifact_k_deps(art_type, target, engine):
+    """Get list of K elements this artifact depends on."""
+    deps = []
+    if art_type == 'channel_schema':
+        deps.append(target)
+    elif art_type == 'module_skeleton':
+        deps.append(target)
+        # Add all channels the module uses
+        oid = engine._find_oid_by_name(target)
+        if oid:
+            contract = engine.contract_for(oid)
+            deps.extend(contract['reads'] + contract['writes'])
+    elif art_type == 'tiles_constants':
+        deps.append('conventions')
+    return deps
 
 
 # ── Files ─────────────────────────────────────────────────────────────────────

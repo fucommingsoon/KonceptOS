@@ -12,12 +12,13 @@ def k_hash(objects,attributes,incidence,schemas):
 
 class DAGNode:
     __slots__=('nid','objects','attributes','incidence','schemas','conventions',
-               'impls','comments','seed_dict','ts','incidence_reasoning')
+               'impls','comments','seed_dict','ts','incidence_reasoning','artifacts')
     def __init__(self,obj,attr,inc,sch,conv='',seed_d=None):
         self.objects=copy.deepcopy(obj);self.attributes=copy.deepcopy(attr)
         self.incidence=dict(inc);self.schemas=dict(sch)
         self.conventions=conv;self.seed_dict=seed_d or {}
         self.impls={};self.comments=[];self.incidence_reasoning={}
+        self.artifacts={}  # {artifact_key: {sig, type, code, k_deps, ts}}
         self.nid=k_hash(obj,attr,inc,sch)
         self.ts=time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -50,7 +51,8 @@ class DAG:
                 'incidence':{'%s|%s'%(o,a):v for (o,a),v in n.incidence.items()},
                 'schemas':n.schemas,'conventions':n.conventions,'seed':n.seed_dict,
                 'impls':n.impls,'comments':n.comments,'ts':n.ts,
-                'incidence_reasoning':n.incidence_reasoning}
+                'incidence_reasoning':n.incidence_reasoning,
+                'artifacts':n.artifacts}
         return {'nodes':nd,'edges':self.edges,'root':self.root}
     def from_dict(self,d):
         self.nodes={};self.edges=d.get('edges',[]);self.root=d.get('root')
@@ -62,7 +64,7 @@ class DAG:
             n=DAGNode(nd['objects'],nd['attributes'],inc,nd.get('schemas',{}),
                       nd.get('conventions',''),nd.get('seed'))
             n.nid=h;n.impls=nd.get('impls',{});n.comments=nd.get('comments',[]);n.ts=nd.get('ts','')
-            n.incidence_reasoning=nd.get('incidence_reasoning',{})
+            n.incidence_reasoning=nd.get('incidence_reasoning',{});n.artifacts=nd.get('artifacts',{})
             self.nodes[h]=n
 
 
@@ -75,6 +77,7 @@ class Engine:
         self.dag=DAG();self.current_node=None;self.impls={};self.dirty=False
         self._watchers=[];self._batch=False
         self.incidence_reasoning={}  # {(oid,aid): {'direction':..., 'reasoning':...}}
+        self.artifacts={}  # {artifact_key: {sig, type, code, k_deps, ts}}
 
     def _mark_dirty(self):
         self.dirty=True
@@ -427,6 +430,7 @@ class Engine:
                      self.conventions,self.seed.to_dict() if self.seed.has_content() else {})
         node.impls=copy.deepcopy(self.impls)
         node.incidence_reasoning=copy.deepcopy(self.incidence_reasoning)
+        node.artifacts=copy.deepcopy(self.artifacts)
         nid=self.dag.add_node(node,self.current_node,desc)
         self.current_node=nid;self.dirty=False
         if was_dirty: self._notify_watchers()
@@ -439,8 +443,104 @@ class Engine:
         self.incidence=dict(n.incidence);self.schemas=dict(n.schemas)
         self.conventions=n.conventions;self.impls=copy.deepcopy(n.impls)
         if n.seed_dict: self.seed.from_dict(n.seed_dict);self.seed_chain=SeedChain([self.seed])
+        self.artifacts=copy.deepcopy(n.artifacts)
         self.current_node=nid;self.dirty=False;self.compute()
         self._notify_watchers()
+
+    # ── Artifact Management ──
+    def compute_artifact_sig(self, artifact_key):
+        """Compute SHA256 sig for an artifact based on relevant K state."""
+        parts = artifact_key.split('_', 1)
+        a_type = parts[0]
+        target = parts[1] if len(parts) > 1 else ''
+
+        if a_type == 'channel_schema':
+            # Sig based on channel schema + all module contracts
+            aid = self._find_aid_by_name(target)
+            k_subset = {
+                'schemas': {aid: self.schemas.get(aid, 'any')} if aid else {},
+                'incidence': {k: v for k, v in self.incidence.items() if k[1] == aid}
+            }
+        elif a_type == 'module_skeleton':
+            # Sig based on module's contract + schema
+            oid = self._find_oid_by_name(target)
+            k_subset = {
+                'contract': self.contract_for(oid) if oid else {},
+                'schemas': self.schemas,
+                'conventions': self.conventions
+            }
+        elif a_type == 'tiles_constants':
+            k_subset = {'conventions': self.conventions}
+        elif a_type == 'contract_bridge':
+            aid = self._find_aid_by_name(target)
+            k_subset = {
+                'schemas': {aid: self.schemas.get(aid, 'any')} if aid else {},
+                'incidence': {k: v for k, v in self.incidence.items() if k[1] == aid}
+            }
+        else:
+            k_subset = {}
+
+        canon = json.dumps(k_subset, sort_keys=True)
+        return hashlib.sha256(canon.encode()).hexdigest()[:16]
+
+    def _find_aid_by_name(self, name):
+        for aid in self.attributes:
+            if self.attributes[aid]['name'] == name:
+                return aid
+        return None
+
+    def _find_oid_by_name(self, name):
+        for oid in self.objects:
+            if self.objects[oid]['name'] == name:
+                return oid
+        return None
+
+    def get_artifact(self, artifact_key):
+        """Get artifact if sig is still valid, else return None."""
+        art = self.artifacts.get(artifact_key)
+        if not art:
+            return None
+        expected_sig = self.compute_artifact_sig(artifact_key)
+        if art['sig'] != expected_sig:
+            return None  # sig expired
+        return art
+
+    def set_artifact(self, artifact_key, artifact_type, code, k_deps):
+        """Store an artifact with computed sig."""
+        self.artifacts[artifact_key] = {
+            'sig': self.compute_artifact_sig(artifact_key),
+            'type': artifact_type,
+            'code': code,
+            'k_deps': k_deps,
+            'ts': time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        self._mark_dirty()
+
+    def invalidate_artifacts(self, k_deps):
+        """Mark artifacts whose k_deps overlap with changed K elements as stale.
+        k_deps: list of artifact_keys or partial names like ['entity_positions', 'MovementController']
+        """
+        stale_keys = []
+        for key, art in self.artifacts.items():
+            for dep in art.get('k_deps', []):
+                if any(dep in d or d in key for d in k_deps):
+                    stale_keys.append(key)
+                    break
+        for key in stale_keys:
+            del self.artifacts[key]
+
+    def list_artifacts(self):
+        """Return list of (key, art) pairs."""
+        return list(self.artifacts.items())
+
+    def artifact_status(self):
+        """Check each artifact's sig validity. Returns list of (key, status)."""
+        results = []
+        for key, art in self.artifacts.items():
+            expected = self.compute_artifact_sig(key)
+            status = 'valid' if art['sig'] == expected else 'stale'
+            results.append((key, status, art.get('type', '?'), art.get('ts', '')))
+        return results
 
     # ── Serialization ──
     def export_spec(self,fp=None):
