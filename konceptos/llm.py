@@ -183,9 +183,96 @@ class LLM:
             "2. Implement the ModuleImpl interface with init(), update(), render() methods\n"
             "3. Only access channels listed in your contract via state.read()/state.write()\n"
             "4. Use plain JavaScript (no TypeScript syntax, no type annotations)\n"
-            "5. Export default your module object\n\n"
+            "5. Make your module available as a global variable with EXACTLY the module's name\n"
+            "   (e.g. for module 'MovementController', write: const MovementController = { name:'MovementController', ... })\n"
+            "   DO NOT use 'export', 'export default', or 'module.exports'\n\n"
             "Output ONLY the module code. No markdown fences. No explanations.")
-        return self.ask(system,p,8000)
+        return self.ask(system,p,32000)
+
+    # ── LLM Review ──
+    def review_module(self, module_name, code, contract_code, framework_excerpt, conventions=''):
+        """Review a module's code against its contract and framework.
+        Returns: {'issues': [...], 'score': int, 'verdict': 'pass'|'fail'|'needs_fix'}
+        """
+        prompt = (
+            f"You are reviewing a generated module for a KonceptOS game project.\n\n"
+            f"== MODULE ==\n"
+            f"Name: {module_name}\n\n"
+            f"== CONTRACT (what the module is allowed to do) ==\n"
+            f"{contract_code}\n\n"
+            f"== FRAMEWORK CONTEXT ==\n"
+            f"{framework_excerpt}\n\n"
+            f"== CONSTRAINTS ==\n"
+            f"{conventions or '(none)'}\n\n"
+            f"== GENERATED CODE ==\n"
+            f"{code[:3000]}\n\n"
+            f"Review the code for:\n"
+            f"1. Contract compliance: does it only access channels listed in its contract?\n"
+            f"2. Correctness: any logic bugs, uninitialized channels, wrong API usage?\n"
+            f"3. Completeness: does init/update/render have real implementation?\n"
+            f"4. Best practices: proper state management, no global variables, clean code?\n\n"
+            f"Respond in pure JSON:\n"
+            f'{{"score": 0-10, "verdict": "pass"|"needs_fix"|"fail", "issues": ["issue1", "issue2", ...]}}'
+        )
+        r = self.ask("Answer with ONLY the JSON review result.", prompt, 3000)
+        d, err = extract_json(r)
+        if not d:
+            return {'score': 5, 'verdict': 'needs_fix', 'issues': [f'Review parse failed: {err}']}
+        return {
+            'score': d.get('score', 5),
+            'verdict': d.get('verdict', 'needs_fix'),
+            'issues': d.get('issues', [])
+        }
+
+    def review_module_with_fix(self, module_name, code, contract_code, framework_excerpt,
+                               conventions='', upstream='', downstream=''):
+        """Review a module and if issues found, generate a fixed version.
+        Returns: {'code': '...', 'review': {...}, 'fixed': bool}
+        """
+        review = self.review_module(module_name, code, contract_code, framework_excerpt, conventions)
+        if review['verdict'] == 'pass' or review['score'] >= 8:
+            return {'code': code, 'review': review, 'fixed': False}
+
+        # Build fix prompt
+        issues_text = '\n'.join(f"- {issue}" for issue in review['issues'])
+        fix_prompt = (
+            f"Fix the following issues in the module '{module_name}':\n"
+            f"{issues_text}\n\n"
+            f"== ORIGINAL CODE ==\n"
+            f"{code[:3000]}\n\n"
+            f"== CONTRACT ==\n"
+            f"{contract_code}\n\n"
+            f"== FRAMEWORK ==\n"
+            f"{framework_excerpt}\n\n"
+        )
+        if conventions: fix_prompt += f"== CONSTRAINTS ==\n{conventions}\n\n"
+        if upstream: fix_prompt += f"== UPSTREAM ==\n{upstream}\n\n"
+        if downstream: fix_prompt += f"== DOWNSTREAM ==\n{downstream}\n\n"
+
+        fix_prompt += (
+            "Output ONLY the corrected module code. No markdown fences. No explanations.\n"
+            "The fixed code must:\n"
+            "1. Address ALL issues listed above\n"
+            "2. Still comply with the contract\n"
+            "3. Use plain JavaScript only\n"
+            "4. Make module available as a global variable (e.g. const %s = {{...}})\n"
+        )
+
+        fixed_code = self.ask(
+            "Output ONLY the corrected module code. No markdown fences.",
+            fix_prompt, 32000
+        )
+
+        # Strip markdown fences if present
+        if fixed_code.strip().startswith('```'):
+            ls = fixed_code.strip().split('\n')
+            if ls[0].startswith('```'): ls = ls[1:]
+            if ls and ls[-1].startswith('```'): ls = ls[:-1]
+            fixed_code = '\n'.join(ls)
+        # Strip export statements (plain <script> tags, not ES modules)
+        fixed_code = '\n'.join(line for line in fixed_code.split('\n') if not line.strip().startswith('export '))
+
+        return {'code': fixed_code, 'review': review, 'fixed': True}
 
     # ── Full build (legacy) ──
     def build_full(self,spec,conventions):

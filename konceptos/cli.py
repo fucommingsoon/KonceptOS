@@ -830,6 +830,184 @@ def build(output, auto_test, max_iter, test_hooks):
     _ok('%s (%d chars)' % (output, len(html)))
 
 
+# ── Build2: Multi-file build with LLM review ──────────────────────────────────
+
+@cli.command('build2')
+@click.option('--output', default='build2_output', help='Output directory')
+@click.option('--review/--no-review', default=True, help='Enable LLM review after each module')
+@click.option('--max-fix', default=2, help='Max fix iterations per module when issues found')
+@click.option('--skip-selenium', is_flag=True, help='Skip Selenium test after build')
+def build2_cmd(output, review, max_fix, skip_selenium):
+    """Multi-file build: generate framework + modules + review + fix.
+
+    Pipeline:
+      1. Generate framework files (framework.js, style.css)
+      2. Generate module implementations in topological order
+      3. LLM review each module; if issues found, regenerate with fixes
+      4. Assemble into output directory
+      5. Optional Selenium test
+    """
+    import os
+    e = _engine(); llm = LLM()
+    if not llm.ok: _err('LLM not available. Set OPENROUTER_API_KEY.'); return
+    if not e.concepts: e.compute()
+
+    order, has_cycle = e.topo_sort()
+    if has_cycle:
+        _warn('Dependency cycle detected in K')
+
+    conv = e.get_all_conventions()
+    out_dir = output.rstrip('/')
+
+    # Step 1: Create output directory structure
+    modules_dir = os.path.join(out_dir, 'modules')
+    os.makedirs(modules_dir, exist_ok=True)
+    _info('Output: %s/' % out_dir)
+
+    # Step 2: Write framework files
+    _info('Writing framework...')
+    framework = codegen.generate_framework_js(e)
+    game_loop = codegen._build_game_loop_js(e, order)
+    with open(os.path.join(out_dir, 'framework.js'), 'w', encoding='utf-8') as f:
+        f.write('// KonceptOS v2.3 build2 | Node: %s\n\n' % (e.current_node or '?'))
+        f.write(framework)
+        f.write('\n\n')
+        f.write(game_loop)
+
+    with open(os.path.join(out_dir, 'style.css'), 'w', encoding='utf-8') as f:
+        f.write(codegen.generate_style_css(e))
+
+    with open(os.path.join(out_dir, 'index.html'), 'w', encoding='utf-8') as f:
+        f.write(codegen.generate_index_html(e, [safe_name(e.objects[oid]['name']) for oid in order]))
+
+    # Step 3: Generate modules in topological order
+    module_results = {}  # module_name -> {'code': ..., 'review': {...}, 'fixed': bool}
+
+    for oid in order:
+        on = e.objects[oid]['name']
+        sn = safe_name(on)
+        _info('Generating module: %s...' % on)
+
+        # Build context for this module
+        framework_excerpt = codegen.generate_impl_context(e, oid)
+        contract_code = codegen.generate_contract_code(e, oid)
+
+        # Upstream / downstream for context
+        up_parts = []; dn_parts = []
+        for aid in sorted(e.attributes):
+            v = e.incidence.get((oid, aid), 'RW'); an = e.attributes[aid]['name']
+            if v in ('R', 'RW'):
+                ws = [e.objects[o]['name'] for o in e.objects if o != oid and e.incidence.get((o, aid), 'RW') in ('W', 'RW')]
+                if ws: up_parts.append('%s ← %s' % (an, ', '.join(ws)))
+            if v in ('W', 'RW'):
+                rs = [e.objects[o]['name'] for o in e.objects if o != oid and e.incidence.get((o, aid), 'RW') == 'R']
+                if rs: dn_parts.append('%s → %s' % (an, ', '.join(rs)))
+
+        upstream = '\n'.join(up_parts)
+        downstream = '\n'.join(dn_parts)
+
+        prev_impls = e.impls.get(on, [])
+
+        # Generate module code
+        code = llm.build_module(on, e.objects[oid].get('desc', ''), contract_code,
+                                framework_excerpt, conv, upstream, downstream, prev_impls)
+
+        # Strip markdown fences and export statements (not ES modules, plain <script> tags)
+        if code.strip().startswith('```'):
+            ls = code.strip().split('\n')
+            if ls[0].startswith('```'): ls = ls[1:]
+            if ls and ls[-1].startswith('```'): ls = ls[:-1]
+            code = '\n'.join(ls)
+        # Remove 'export default xxx;' lines (these are ES module syntax, not valid in plain script tags)
+        code = '\n'.join(line for line in code.split('\n') if not line.strip().startswith('export '))
+
+        # Review and fix
+        fixed = False
+        review_result = None
+        if review:
+            _info('  Reviewing %s...' % on)
+            fix_iter = 0
+            current_code = code
+
+            while fix_iter < max_fix:
+                result = llm.review_module_with_fix(
+                    on, current_code, contract_code, framework_excerpt, conv,
+                    upstream, downstream
+                )
+                review_result = result['review']
+                if result['fixed']:
+                    current_code = result['code']
+                    _warn('  Fix #%d: score=%d issues=%d' % (fix_iter+1, review_result.get('score', 0), len(review_result.get('issues', []))))
+                    fix_iter += 1
+                    if review_result.get('verdict') == 'pass' or review_result.get('score', 0) >= 8:
+                        code = current_code
+                        fixed = True
+                        _ok('  Passed after fix #%d (score=%d)' % (fix_iter, review_result.get('score', 0)))
+                        break
+                else:
+                    if fixed:
+                        break
+                    _info('  No fixes needed, score=%d' % review_result.get('score', 0))
+                    code = current_code
+                    break
+            else:
+                _warn('  Max fix iterations reached, score=%d' % review_result.get('score', 0))
+                code = current_code
+
+            for issue in review_result.get('issues', []):
+                _warn('    - %s' % issue[:120])
+        else:
+            module_results[on] = {'code': code, 'review': None, 'fixed': False}
+
+        # Write module file (validate - if code is too short or looks like error, use stub)
+        if len(code) < 100 or code.startswith('(HTTP') or code.startswith('(err'):
+            _warn('  %s.js: generated code too short/invalid (%d chars), using stub' % (sn, len(code)))
+            stub = (
+                '// ═══ %s — AUTO STUB ═══\n'
+                'const mod_%s = {\n'
+                "  name: '%s',\n"
+                '  init(state) {},\n'
+                '  update(state, dt) {},\n'
+                '  render(state, ctx) {}\n'
+                '};\n'
+            ) % (on, sn, on)
+            with open(os.path.join(modules_dir, '%s.js' % sn), 'w', encoding='utf-8') as f:
+                f.write(stub)
+            code = stub
+        else:
+            with open(os.path.join(modules_dir, '%s.js' % sn), 'w', encoding='utf-8') as f:
+                f.write(code)
+
+        _ok('  %s.js (%d chars)' % (sn, len(code)))
+
+        # Store impl in engine for potential later use
+        e.impls.setdefault(on, []).append({
+            'code': code,
+            'comment': 'build2 generated',
+            'ts': time.strftime('%H:%M:%S')
+        })
+        module_results[on] = {'code': code, 'review': review_result, 'fixed': fixed}
+
+    # Step 4: Save workspace with new impls
+    _ensure_dir(); e._mark_dirty(); e.save_workspace(WORKSPACE_DIR)
+
+    # Step 5: Summary
+    total = len(order)
+    passed = sum(1 for r in module_results.values() if r['review'] is None or r['review'].get('verdict') == 'pass')
+    fixed_cnt = sum(1 for r in module_results.values() if r['fixed'])
+    _ok('Build2 complete: %d modules | passed=%d | fixed=%d | output=%s/' % (total, passed, fixed_cnt, out_dir))
+
+    if not skip_selenium:
+        _info('Running Selenium tests...')
+        test_file = os.path.join(out_dir, 'test_hooks.py')
+        runner = SeleniumTestRunner(os.path.join(out_dir, 'index.html'), test_file)
+        result = runner.run()
+        if result.passed:
+            _ok('Selenium tests passed')
+        else:
+            _warn('Selenium tests failed: %s' % result.to_llm_feedback())
+
+
 # ── Files ─────────────────────────────────────────────────────────────────────
 
 @cli.command('save')

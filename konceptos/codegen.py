@@ -138,7 +138,7 @@ def generate_impl_context(engine, oid):
     
     # Required module shape
     lines.append('// YOUR MODULE MUST be this shape:')
-    lines.append('const myModule = {')
+    lines.append('const %s = {' % safe_name(on))
     lines.append("  name: '%s'," % on)
     lines.append('  init(state) { /* called once, initialize your write channels */ },')
     lines.append('  update(state, dt) { /* called every frame */ },')
