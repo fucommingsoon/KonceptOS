@@ -56,6 +56,39 @@ class LLM:
             '"attributes":[{"id":"A","name":"...","desc":"..."},...],\n'
             '"incidence":{"F01":"R,0,W,RW,...","F02":"...",...}}',text,32000)
 
+    # ── Single cell judgment with reasoning ──
+    def judge_cell(self, obj_name, obj_desc, attr_name, attr_desc, context=''):
+        """Judge a single (obj,attr) pair with LLM reasoning.
+        Returns: {'direction': 'R'|'W'|'0'|'RW', 'reasoning': '...'} or None if LLM unavailable.
+        """
+        prompt = (
+            f"Module: {obj_name}\n"
+            f"Description: {obj_desc[:120] if obj_desc else 'N/A'}\n"
+            f"Data Channel: {attr_name}\n"
+            f"Channel Description: {attr_desc[:120] if attr_desc else 'N/A'}\n\n"
+            f"Question: Should '{obj_name}' READ or WRITE '{attr_name}'?\n"
+            f"- READ (R): '{obj_name}' only observes/reads values from this channel but does not produce new values.\n"
+            f"- WRITE (W): '{obj_name}' controls/produces/changes values in this channel.\n"
+            f"- 0: '{obj_name}' is not involved with this channel at all.\n\n"
+        )
+        if context:
+            prompt += f"Context: {context}\n\n"
+        prompt += (
+            "Think step by step and explain your reasoning.\n"
+            "Then output your answer in pure JSON:\n"
+            '{"direction": "R|W|0", "reasoning": "your explanation here"}'
+        )
+        r = self.ask(
+            "Answer with ONLY the JSON object.",
+            prompt, 2000
+        )
+        d, _ = extract_json(r)
+        if d and 'direction' in d:
+            val = d['direction'].strip().upper()
+            if val in ('R', 'W', '0', 'RW'):
+                return {'direction': val, 'reasoning': d.get('reasoning', '')}
+        return None
+
     # ── Direction judgment ──
     def judge_batch(self,pairs,context=''):
         """Judge multiple (obj,attr) pairs in batched LLM calls.

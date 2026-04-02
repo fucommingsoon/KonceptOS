@@ -1,0 +1,647 @@
+{
+  "objects": {
+    "F02": {
+      "name": "watergirl",
+      "desc": "Player 2 character; water immune, lava deadly; collects blue gems; arrow key controls"
+    },
+    "F04": {
+      "name": "collision_detector",
+      "desc": "Detects collisions between entities and tiles, liquids, mechanisms, gems, exits"
+    },
+    "F05": {
+      "name": "input_handler",
+      "desc": "Processes keyboard input and produces combined input state for both players"
+    },
+    "F06": {
+      "name": "level_generator",
+      "desc": "Procedurally generates solvable levels with increasing difficulty"
+    },
+    "F07": {
+      "name": "mechanism_controller",
+      "desc": "Manages buttons, doors, moving platforms, and pushable boxes"
+    },
+    "F08": {
+      "name": "game_flow",
+      "desc": "Handles win/lose conditions, level progression, and restart logic"
+    },
+    "F03_1": {
+      "name": "gravity_system",
+      "desc": "Calculates and applies downward gravitational acceleration to entity velocity vectors per frame."
+    },
+    "F03_2": {
+      "name": "kinematic_integrator",
+      "desc": "Updates entity world positions based on current velocity, handling displacement and movement limits."
+    },
+    "F03_3": {
+      "name": "impulse_handler",
+      "desc": "Manages discrete, instant changes to entity momentum, specifically handling jump initiation and burst mechanics."
+    },
+    "F01_1": {
+      "name": "MovementController",
+      "desc": "WASD input processing, horizontal movement physics, and jump mechanics for navigation"
+    },
+    "F01_2": {
+      "name": "ElementalAffinity",
+      "desc": "Defines hazard interactions: immunity to lava pools, vulnerability to water, and corresponding damage/timeout logic"
+    },
+    "F01_3": {
+      "name": "GemCollector",
+      "desc": "Handles proximity detection and pickup of red gems specific to Fireboy's collection quota"
+    },
+    "F01_4": {
+      "name": "CharacterState",
+      "desc": "Manages lifecycle states: alive, dead, respawning; coordinates death triggers and level restart signals"
+    }
+  },
+  "attributes": {
+    "A": {
+      "name": "entity_positions",
+      "desc": "Coordinates of players, boxes, and moving platforms: {x: number, y: number}"
+    },
+    "B": {
+      "name": "velocity_vectors",
+      "desc": "Movement vectors for physics: {vx: number, vy: number}"
+    },
+    "C": {
+      "name": "input_keys",
+      "desc": "Current keyboard state: {fireboy: {up, left, right}, watergirl: {up, left, right}}"
+    },
+    "D": {
+      "name": "tile_layout",
+      "desc": "Static wall and platform tiles: 2D array (20×15 grid of 40px tiles)"
+    },
+    "E": {
+      "name": "hazard_zones",
+      "desc": "Lava, water, and poison pool locations with types: [{type, x, y, width, height}]"
+    },
+    "F": {
+      "name": "mechanism_state",
+      "desc": "Button activations, door states, moving platform positions, box locations"
+    },
+    "G": {
+      "name": "gem_collection",
+      "desc": "Collected status of red and blue gems: {red: boolean[], blue: boolean[]}"
+    },
+    "H": {
+      "name": "player_state",
+      "desc": "Alive/dead status and exit arrival: {fireboy: {alive, atExit}, watergirl: {...}}"
+    },
+    "I": {
+      "name": "level_config",
+      "desc": "Generation parameters: physics constants, map size, difficulty settings"
+    },
+    "J": {
+      "name": "game_state",
+      "desc": "Current level number and overall win/lose status"
+    }
+  },
+  "incidence": {
+    "F02|A": "R",
+    "F04|A": "R",
+    "F05|A": "0",
+    "F06|A": "W",
+    "F07|A": "R",
+    "F08|A": "R",
+    "F02|B": "0",
+    "F04|B": "R",
+    "F05|B": "0",
+    "F06|B": "0",
+    "F07|B": "0",
+    "F08|B": "0",
+    "F02|C": "0",
+    "F04|C": "0",
+    "F05|C": "W",
+    "F06|C": "0",
+    "F07|C": "0",
+    "F08|C": "0",
+    "F02|D": "0",
+    "F04|D": "R",
+    "F05|D": "0",
+    "F06|D": "W",
+    "F07|D": "0",
+    "F08|D": "0",
+    "F02|E": "R",
+    "F04|E": "R",
+    "F05|E": "0",
+    "F06|E": "W",
+    "F07|E": "0",
+    "F08|E": "0",
+    "F02|F": "0",
+    "F04|F": "R",
+    "F05|F": "0",
+    "F06|F": "W",
+    "F07|F": "W",
+    "F08|F": "0",
+    "F02|G": "W",
+    "F04|G": "R",
+    "F05|G": "0",
+    "F06|G": "W",
+    "F07|G": "0",
+    "F08|G": "R",
+    "F02|H": "W",
+    "F04|H": "0",
+    "F05|H": "0",
+    "F06|H": "W",
+    "F07|H": "0",
+    "F08|H": "R",
+    "F02|I": "0",
+    "F04|I": "0",
+    "F05|I": "0",
+    "F06|I": "R",
+    "F07|I": "0",
+    "F08|I": "W",
+    "F02|J": "0",
+    "F04|J": "0",
+    "F05|J": "0",
+    "F06|J": "R",
+    "F07|J": "0",
+    "F08|J": "W",
+    "F03_1|A": "0",
+    "F03_1|B": "W",
+    "F03_1|C": "0",
+    "F03_1|D": "0",
+    "F03_1|E": "0",
+    "F03_1|F": "R",
+    "F03_1|G": "0",
+    "F03_1|H": "0",
+    "F03_1|I": "R",
+    "F03_1|J": "0",
+    "F03_2|A": "W",
+    "F03_2|B": "R",
+    "F03_2|C": "R",
+    "F03_2|D": "0",
+    "F03_2|E": "0",
+    "F03_2|F": "W",
+    "F03_2|G": "0",
+    "F03_2|H": "0",
+    "F03_2|I": "R",
+    "F03_2|J": "0",
+    "F03_3|A": "0",
+    "F03_3|B": "W",
+    "F03_3|C": "R",
+    "F03_3|D": "0",
+    "F03_3|E": "0",
+    "F03_3|F": "R",
+    "F03_3|G": "0",
+    "F03_3|H": "0",
+    "F03_3|I": "R",
+    "F03_3|J": "0",
+    "F01_1|A": "W",
+    "F01_1|B": "0",
+    "F01_1|C": "0",
+    "F01_1|D": "0",
+    "F01_1|E": "0",
+    "F01_1|F": "0",
+    "F01_1|G": "0",
+    "F01_1|H": "R",
+    "F01_1|I": "0",
+    "F01_1|J": "0",
+    "F01_2|A": "R",
+    "F01_2|B": "0",
+    "F01_2|C": "0",
+    "F01_2|D": "0",
+    "F01_2|E": "R",
+    "F01_2|F": "0",
+    "F01_2|G": "0",
+    "F01_2|H": "W",
+    "F01_2|I": "0",
+    "F01_2|J": "0",
+    "F01_3|A": "R",
+    "F01_3|B": "0",
+    "F01_3|C": "0",
+    "F01_3|D": "0",
+    "F01_3|E": "0",
+    "F01_3|F": "0",
+    "F01_3|G": "W",
+    "F01_3|H": "0",
+    "F01_3|I": "0",
+    "F01_3|J": "0",
+    "F01_4|A": "R",
+    "F01_4|B": "0",
+    "F01_4|C": "0",
+    "F01_4|D": "0",
+    "F01_4|E": "R",
+    "F01_4|F": "0",
+    "F01_4|G": "0",
+    "F01_4|H": "W",
+    "F01_4|I": "0",
+    "F01_4|J": "0"
+  },
+  "schemas": {},
+  "conventions": "补充：Fireboy是橙色火焰精灵，Watergirl是蓝色冰霜精灵，有简单2D行走动画",
+  "impls": {},
+  "seed": {},
+  "current_node": "ca0448abb02e",
+  "dirty": false,
+  "dag": {
+    "nodes": {
+      "530a8da61719": {
+        "objects": {
+          "F01": {
+            "name": "fireboy",
+            "desc": "Player 1 character; lava immune, water deadly; collects red gems; WASD controls"
+          },
+          "F02": {
+            "name": "watergirl",
+            "desc": "Player 2 character; water immune, lava deadly; collects blue gems; arrow key controls"
+          },
+          "F03": {
+            "name": "physics_engine",
+            "desc": "Applies gravity, handles movement and jumping for all dynamic entities"
+          },
+          "F04": {
+            "name": "collision_detector",
+            "desc": "Detects collisions between entities and tiles, liquids, mechanisms, gems, exits"
+          },
+          "F05": {
+            "name": "input_handler",
+            "desc": "Processes keyboard input and produces combined input state for both players"
+          },
+          "F06": {
+            "name": "level_generator",
+            "desc": "Procedurally generates solvable levels with increasing difficulty"
+          },
+          "F07": {
+            "name": "mechanism_controller",
+            "desc": "Manages buttons, doors, moving platforms, and pushable boxes"
+          },
+          "F08": {
+            "name": "game_flow",
+            "desc": "Handles win/lose conditions, level progression, and restart logic"
+          }
+        },
+        "attributes": {
+          "A": {
+            "name": "entity_positions",
+            "desc": "Coordinates of players, boxes, and moving platforms: {x: number, y: number}"
+          },
+          "B": {
+            "name": "velocity_vectors",
+            "desc": "Movement vectors for physics: {vx: number, vy: number}"
+          },
+          "C": {
+            "name": "input_keys",
+            "desc": "Current keyboard state: {fireboy: {up, left, right}, watergirl: {up, left, right}}"
+          },
+          "D": {
+            "name": "tile_layout",
+            "desc": "Static wall and platform tiles: 2D array (20×15 grid of 40px tiles)"
+          },
+          "E": {
+            "name": "hazard_zones",
+            "desc": "Lava, water, and poison pool locations with types: [{type, x, y, width, height}]"
+          },
+          "F": {
+            "name": "mechanism_state",
+            "desc": "Button activations, door states, moving platform positions, box locations"
+          },
+          "G": {
+            "name": "gem_collection",
+            "desc": "Collected status of red and blue gems: {red: boolean[], blue: boolean[]}"
+          },
+          "H": {
+            "name": "player_state",
+            "desc": "Alive/dead status and exit arrival: {fireboy: {alive, atExit}, watergirl: {...}}"
+          },
+          "I": {
+            "name": "level_config",
+            "desc": "Generation parameters: physics constants, map size, difficulty settings"
+          },
+          "J": {
+            "name": "game_state",
+            "desc": "Current level number and overall win/lose status"
+          }
+        },
+        "incidence": {
+          "F01|A": "R",
+          "F02|A": "R",
+          "F03|A": "RW",
+          "F04|A": "R",
+          "F05|A": "0",
+          "F06|A": "W",
+          "F07|A": "R",
+          "F08|A": "R",
+          "F01|B": "0",
+          "F02|B": "0",
+          "F03|B": "RW",
+          "F04|B": "R",
+          "F05|B": "0",
+          "F06|B": "0",
+          "F07|B": "0",
+          "F08|B": "0",
+          "F01|C": "0",
+          "F02|C": "0",
+          "F03|C": "R",
+          "F04|C": "0",
+          "F05|C": "W",
+          "F06|C": "0",
+          "F07|C": "0",
+          "F08|C": "0",
+          "F01|D": "0",
+          "F02|D": "0",
+          "F03|D": "0",
+          "F04|D": "R",
+          "F05|D": "0",
+          "F06|D": "W",
+          "F07|D": "0",
+          "F08|D": "0",
+          "F01|E": "R",
+          "F02|E": "R",
+          "F03|E": "0",
+          "F04|E": "R",
+          "F05|E": "0",
+          "F06|E": "W",
+          "F07|E": "0",
+          "F08|E": "0",
+          "F01|F": "0",
+          "F02|F": "0",
+          "F03|F": "R",
+          "F04|F": "R",
+          "F05|F": "0",
+          "F06|F": "W",
+          "F07|F": "RW",
+          "F08|F": "0",
+          "F01|G": "RW",
+          "F02|G": "RW",
+          "F03|G": "0",
+          "F04|G": "R",
+          "F05|G": "0",
+          "F06|G": "W",
+          "F07|G": "0",
+          "F08|G": "R",
+          "F01|H": "RW",
+          "F02|H": "RW",
+          "F03|H": "0",
+          "F04|H": "0",
+          "F05|H": "0",
+          "F06|H": "W",
+          "F07|H": "0",
+          "F08|H": "RW",
+          "F01|I": "0",
+          "F02|I": "0",
+          "F03|I": "R",
+          "F04|I": "0",
+          "F05|I": "0",
+          "F06|I": "RW",
+          "F07|I": "0",
+          "F08|I": "W",
+          "F01|J": "0",
+          "F02|J": "0",
+          "F03|J": "0",
+          "F04|J": "0",
+          "F05|J": "0",
+          "F06|J": "R",
+          "F07|J": "0",
+          "F08|J": "RW"
+        },
+        "schemas": {},
+        "conventions": "",
+        "seed": {},
+        "impls": {},
+        "comments": [],
+        "ts": "2026-04-02 11:24:43",
+        "incidence_reasoning": {}
+      },
+      "ca0448abb02e": {
+        "objects": {
+          "F02": {
+            "name": "watergirl",
+            "desc": "Player 2 character; water immune, lava deadly; collects blue gems; arrow key controls"
+          },
+          "F04": {
+            "name": "collision_detector",
+            "desc": "Detects collisions between entities and tiles, liquids, mechanisms, gems, exits"
+          },
+          "F05": {
+            "name": "input_handler",
+            "desc": "Processes keyboard input and produces combined input state for both players"
+          },
+          "F06": {
+            "name": "level_generator",
+            "desc": "Procedurally generates solvable levels with increasing difficulty"
+          },
+          "F07": {
+            "name": "mechanism_controller",
+            "desc": "Manages buttons, doors, moving platforms, and pushable boxes"
+          },
+          "F08": {
+            "name": "game_flow",
+            "desc": "Handles win/lose conditions, level progression, and restart logic"
+          },
+          "F03_1": {
+            "name": "gravity_system",
+            "desc": "Calculates and applies downward gravitational acceleration to entity velocity vectors per frame."
+          },
+          "F03_2": {
+            "name": "kinematic_integrator",
+            "desc": "Updates entity world positions based on current velocity, handling displacement and movement limits."
+          },
+          "F03_3": {
+            "name": "impulse_handler",
+            "desc": "Manages discrete, instant changes to entity momentum, specifically handling jump initiation and burst mechanics."
+          },
+          "F01_1": {
+            "name": "MovementController",
+            "desc": "WASD input processing, horizontal movement physics, and jump mechanics for navigation"
+          },
+          "F01_2": {
+            "name": "ElementalAffinity",
+            "desc": "Defines hazard interactions: immunity to lava pools, vulnerability to water, and corresponding damage/timeout logic"
+          },
+          "F01_3": {
+            "name": "GemCollector",
+            "desc": "Handles proximity detection and pickup of red gems specific to Fireboy's collection quota"
+          },
+          "F01_4": {
+            "name": "CharacterState",
+            "desc": "Manages lifecycle states: alive, dead, respawning; coordinates death triggers and level restart signals"
+          }
+        },
+        "attributes": {
+          "A": {
+            "name": "entity_positions",
+            "desc": "Coordinates of players, boxes, and moving platforms: {x: number, y: number}"
+          },
+          "B": {
+            "name": "velocity_vectors",
+            "desc": "Movement vectors for physics: {vx: number, vy: number}"
+          },
+          "C": {
+            "name": "input_keys",
+            "desc": "Current keyboard state: {fireboy: {up, left, right}, watergirl: {up, left, right}}"
+          },
+          "D": {
+            "name": "tile_layout",
+            "desc": "Static wall and platform tiles: 2D array (20×15 grid of 40px tiles)"
+          },
+          "E": {
+            "name": "hazard_zones",
+            "desc": "Lava, water, and poison pool locations with types: [{type, x, y, width, height}]"
+          },
+          "F": {
+            "name": "mechanism_state",
+            "desc": "Button activations, door states, moving platform positions, box locations"
+          },
+          "G": {
+            "name": "gem_collection",
+            "desc": "Collected status of red and blue gems: {red: boolean[], blue: boolean[]}"
+          },
+          "H": {
+            "name": "player_state",
+            "desc": "Alive/dead status and exit arrival: {fireboy: {alive, atExit}, watergirl: {...}}"
+          },
+          "I": {
+            "name": "level_config",
+            "desc": "Generation parameters: physics constants, map size, difficulty settings"
+          },
+          "J": {
+            "name": "game_state",
+            "desc": "Current level number and overall win/lose status"
+          }
+        },
+        "incidence": {
+          "F02|A": "R",
+          "F04|A": "R",
+          "F05|A": "0",
+          "F06|A": "W",
+          "F07|A": "R",
+          "F08|A": "R",
+          "F02|B": "0",
+          "F04|B": "R",
+          "F05|B": "0",
+          "F06|B": "0",
+          "F07|B": "0",
+          "F08|B": "0",
+          "F02|C": "0",
+          "F04|C": "0",
+          "F05|C": "W",
+          "F06|C": "0",
+          "F07|C": "0",
+          "F08|C": "0",
+          "F02|D": "0",
+          "F04|D": "R",
+          "F05|D": "0",
+          "F06|D": "W",
+          "F07|D": "0",
+          "F08|D": "0",
+          "F02|E": "R",
+          "F04|E": "R",
+          "F05|E": "0",
+          "F06|E": "W",
+          "F07|E": "0",
+          "F08|E": "0",
+          "F02|F": "0",
+          "F04|F": "R",
+          "F05|F": "0",
+          "F06|F": "W",
+          "F07|F": "W",
+          "F08|F": "0",
+          "F02|G": "W",
+          "F04|G": "R",
+          "F05|G": "0",
+          "F06|G": "W",
+          "F07|G": "0",
+          "F08|G": "R",
+          "F02|H": "W",
+          "F04|H": "0",
+          "F05|H": "0",
+          "F06|H": "W",
+          "F07|H": "0",
+          "F08|H": "R",
+          "F02|I": "0",
+          "F04|I": "0",
+          "F05|I": "0",
+          "F06|I": "R",
+          "F07|I": "0",
+          "F08|I": "W",
+          "F02|J": "0",
+          "F04|J": "0",
+          "F05|J": "0",
+          "F06|J": "R",
+          "F07|J": "0",
+          "F08|J": "W",
+          "F03_1|A": "0",
+          "F03_1|B": "W",
+          "F03_1|C": "0",
+          "F03_1|D": "0",
+          "F03_1|E": "0",
+          "F03_1|F": "R",
+          "F03_1|G": "0",
+          "F03_1|H": "0",
+          "F03_1|I": "R",
+          "F03_1|J": "0",
+          "F03_2|A": "W",
+          "F03_2|B": "R",
+          "F03_2|C": "R",
+          "F03_2|D": "0",
+          "F03_2|E": "0",
+          "F03_2|F": "W",
+          "F03_2|G": "0",
+          "F03_2|H": "0",
+          "F03_2|I": "R",
+          "F03_2|J": "0",
+          "F03_3|A": "0",
+          "F03_3|B": "W",
+          "F03_3|C": "R",
+          "F03_3|D": "0",
+          "F03_3|E": "0",
+          "F03_3|F": "R",
+          "F03_3|G": "0",
+          "F03_3|H": "0",
+          "F03_3|I": "R",
+          "F03_3|J": "0",
+          "F01_1|A": "W",
+          "F01_1|B": "0",
+          "F01_1|C": "0",
+          "F01_1|D": "0",
+          "F01_1|E": "0",
+          "F01_1|F": "0",
+          "F01_1|G": "0",
+          "F01_1|H": "R",
+          "F01_1|I": "0",
+          "F01_1|J": "0",
+          "F01_2|A": "R",
+          "F01_2|B": "0",
+          "F01_2|C": "0",
+          "F01_2|D": "0",
+          "F01_2|E": "R",
+          "F01_2|F": "0",
+          "F01_2|G": "0",
+          "F01_2|H": "W",
+          "F01_2|I": "0",
+          "F01_2|J": "0",
+          "F01_3|A": "R",
+          "F01_3|B": "0",
+          "F01_3|C": "0",
+          "F01_3|D": "0",
+          "F01_3|E": "0",
+          "F01_3|F": "0",
+          "F01_3|G": "W",
+          "F01_3|H": "0",
+          "F01_3|I": "0",
+          "F01_3|J": "0",
+          "F01_4|A": "R",
+          "F01_4|B": "0",
+          "F01_4|C": "0",
+          "F01_4|D": "0",
+          "F01_4|E": "R",
+          "F01_4|F": "0",
+          "F01_4|G": "0",
+          "F01_4|H": "W",
+          "F01_4|I": "0",
+          "F01_4|J": "0"
+        },
+        "schemas": {},
+        "conventions": "",
+        "seed": {},
+        "impls": {},
+        "comments": [],
+        "ts": "2026-04-02 12:02:48",
+        "incidence_reasoning": {}
+      }
+    },
+    "edges": [],
+    "root": null
+  },
+  "incidence_reasoning": {}
+}

@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elemental Duo - Fireboy & Watergirl</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --fg: #e8e6e3;
+            --muted: #3a3a4a;
+            --accent-fire: #ff6b2c;
+            --accent-fire-glow: #ff4500;
+            --accent-water: #00d4ff;
+            --accent-water-glow: #0099cc;
+            --card: #141420;
+            --border: #2a2a3a;
+            --lava: #ff3300;
+            --water: #0088ff;
+            --poison: #88ff00;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Exo 2', sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            min-height: 100vh;
+            background: 
+                radial-gradient(ellipse at 20% 20%, rgba(255, 107, 44, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
+                linear-gradient(180deg, #0a0a0f 0%, #12121a 100%);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: clamp(28px, 5vw, 48px);
+            font-weight: 900;
+            letter-spacing: 4px;
+            background: linear-gradient(135deg, var(--accent-fire) 0%, var(--fg) 50%, var(--accent-water) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .game-wrapper {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 
+                0 0 60px rgba(255, 107, 44, 0.15),
+                0 0 60px rgba(0, 212, 255, 0.15),
+                0 20px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .game-wrapper::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            background: linear-gradient(135deg, var(--accent-fire), transparent 50%, var(--accent-water));
+            border-radius: 18px;
+            z-index: -1;
+        }
+
+        #gameCanvas {
+            display: block;
+            background: #0d0d14;
+            border-radius: 14px;
+        }
+
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+            margin-top: 20px;
+            padding: 16px 24px;
+            background: var(--card);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .player-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .player-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .fireboy-icon {
+            background: linear-gradient(135deg, var(--accent-fire) 0%, #ff8c00 100%);
+            box-shadow: 0 0 20px var(--accent-fire-glow);
+        }
+
+        .watergirl-icon {
+            background: linear-gradient(135deg, var(--accent-water) 0%, #00aaff 100%);
+            box-shadow: 0 0 20px var(--accent-water-glow);
+        }
+
+        .player-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .player-name {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .player-gems {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .level-info {
+            text-align: center;
+        }
+
+        .level-number {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--fg);
+        }
+
+        .level-label {
+            font-size: 11px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .controls-hint {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .key {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .message-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 10, 15, 0.9);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+            border-radius: 14px;
+        }
+
+        .message-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .message-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 36px;
+            font-weight: 900;
+            margin-bottom: 16px;
+        }
+
+        .message-title.win {
+            color: #00ff88;
+        }
+
+        .message-title.lose {
+            color: #ff4444;
+        }
+
+        .message-sub {
+            font-size: 16px;
+            color: var(--muted);
+            margin-bottom: 24px;
+        }
+
+        .btn {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 12px 32px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-fire), var(--accent-water));
+            color: var(--bg);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(255, 107, 44, 0.3);
+        }
+
+        @media (max-width: 850px) {
+            .game-wrapper {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            #gameCanvas {
+                width: 100%;
+                height: auto;
+            }
+
+            .hud {
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .controls-hint {
+                flex-direction: column;
+                gap: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="header">
+            <h1 class="title">ELEMENTAL DUO</h1>
+            <p class="subtitle">Fireboy & Watergirl</p>
+        </div>
+
+        <div class="game-wrapper">
+            <canvas id="gameCanvas" width="800" height="600"></canvas>
+            <div class="message-overlay" id="messageOverlay">
+                <div class="message-title" id="messageTitle">Level Complete</div>
+                <div class="message-sub" id="messageSub">Both characters reached the exits!</div>
+                <button class="btn btn-primary" id="continueBtn">Continue</button>
+            </div>
+        </div>
+
+        <div class="hud">
+            <div class="player-status">
+                <div class="player-icon fireboy-icon">F</div>
+                <div class="player-info">
+                    <span class="player-name">Fireboy</span>
+                    <span class="player-gems" id="fireboyGems">Red Gems: 0/0</span>
+                </div>
+            </div>
+
+            <div class="level-info">
+                <div class="level-number" id="levelDisplay">1</div>
+                <div class="level-label">Level</div>
+            </div>
+
+            <div class="player-status">
+                <div class="player-info" style="text-align: right;">
+                    <span class="player-name">Watergirl</span>
+                    <span class="player-gems" id="watergirlGems">Blue Gems: 0/0</span>
+                </div>
+                <div class="player-icon watergirl-icon">W</div>
+            </div>
+        </div>
+
+        <div class="controls-hint">
+            <div class="control-group">
+                <span style="color: var(--accent-fire);">Fireboy:</span>
+                <span class="key">W</span><span class="key">A</span><span class="key">D</span>
+            </div>
+            <div class="control-group">
+                <span style="color: var(--accent-water);">Watergirl:</span>
+                <span class="key">↑</span><span class="key">←</span><span class="key">→</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== GAME CONFIGURATION ==========
+        const TILE_SIZE = 40;
+        const GRID_WIDTH = 20;
+        const GRID_HEIGHT = 15;
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 600;
+
+        // ========== LEVEL CONFIGURATION ==========
+        const level_config = {
+            gravity: 0.6,
+            maxFallSpeed: 12,
+            jumpForce: -13,
+            moveSpeed: 4,
+            friction: 0.85
+        };
+
+        // ========== GAME STATE ==========
+        let game_state = {
+            currentLevel: 1,
+            status: 'playing', // playing, win, lose
+            totalLevels: 3
+        };
+
+        let input_keys = {
+            fireboy: { up: false, left: false, right: false },
+            watergirl: { up: false, left: false, right: false }
+        };
+
+        let entity_positions = {
+            fireboy: { x: 80, y: 480 },
+            watergirl: { x: 160, y: 480 }
+        };
+
+        let velocity_vectors = {
+            fireboy: { vx: 0, vy: 0 },
+            watergirl: { vx: 0, vy: 0 }
+        };
+
+        let player_state = {
+            fireboy: { alive: true, atExit: false },
+            watergirl: { alive: true, atExit: false }
+        };
+
+        let tile_layout = [];
+        let hazard_zones = [];
+        let mechanism_state = {
+            buttons: [],
+            doors: [],
+            platforms: [],
+            boxes: []
+        };
+        let gem_collection = {
+            red: [],
+            blue: []
+        };
+
+        // Animation frames
+        let animationTime = 0;
+
+        // ========== LEVEL GENERATOR ==========
+        function level_generator() {
+            tile_layout = [];
+            hazard_zones = [];
+            mechanism_state = { buttons: [], doors: [], platforms: [], boxes: [] };
+            gem_collection = { red: [], blue: [] };
+
+            // Initialize empty grid
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                tile_layout[y] = [];
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    tile_layout[y][x] = 0; // 0 = empty, 1 = wall
+                }
+            }
+
+            // Floor
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                tile_layout[GRID_HEIGHT - 1][x] = 1;
+            }
+
+            // Walls
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                tile_layout[y][0] = 1;
+                tile_layout[y][GRID_WIDTH - 1] = 1;
+            }
+
+            // Level-specific layouts
+            if (game_state.currentLevel === 1) {
+                generateLevel1();
+            } else if (game_state.currentLevel === 2) {
+                generateLevel2();
+            } else {
+                generateLevel3();
+            }
+        }
+
+        function generateLevel1() {
+            // Platforms
+            for (let x = 3; x < 8; x++) tile_layout[11][x] = 1;
+            for (let x = 12; x < 17; x++) tile_layout[11][x] = 1;
+            for (let x = 6; x < 14; x++) tile_layout[8][x] = 1;
+            for (let x = 2; x < 6; x++) tile_layout[5][x] = 1;
+            for (let x = 14; x < 18; x++) tile_layout[5][x] = 1;
+
+            // Lava pool (deadly for Watergirl)
+            hazard_zones.push({ type: 'lava', x: 8 * TILE_SIZE, y: 13 * TILE_SIZE, width: 4 * TILE_SIZE, height: TILE_SIZE });
+
+            // Water pool (deadly for Fireboy)
+            hazard_zones.push({ type: 'water', x: 3 * TILE_SIZE, y: 13 * TILE_SIZE, width: 4 * TILE_SIZE, height: TILE_SIZE });
+
+            // Gems
+            gem_collection.red = [
+                { x: 5 * TILE_SIZE + 15, y: 10 * TILE_SIZE + 10, collected: false },
+                { x: 15 * TILE_SIZE + 15, y: 10 * TILE_SIZE + 10, collected: false }
+            ];
+            gem_collection.blue = [
+                { x: 7 * TILE_SIZE + 15, y: 7 * TILE_SIZE + 10, collected: false },
+                { x: 13 * TILE_SIZE + 15, y: 7 * TILE_SIZE + 10, collected: false }
+            ];
+
+            // Exits
+            mechanism_state.doors = [
+                { type: 'fireExit', x: 2 * TILE_SIZE, y: 4 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2, open: true },
+                { type: 'waterExit', x: 17 * TILE_SIZE, y: 4 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2, open: true }
+            ];
+
+            // Starting positions
+            entity_positions.fireboy = { x: 2 * TILE_SIZE, y: 12 * TILE_SIZE };
+            entity_positions.watergirl = { x: 4 * TILE_SIZE, y: 12 * TILE_SIZE };
+        }
+
+        function generateLevel2() {
+            // More complex layout
+            for (let x = 2; x < 6; x++) tile_layout[12][x] = 1;
+            for (let x = 14; x < 18; x++) tile_layout[12][x] = 1;
+            for (let x = 7; x < 13; x++) tile_layout[10][x] = 1;
+            for (let x = 3; x < 8; x++) tile_layout[7][x] = 1;
+            for (let x = 12; x < 17; x++) tile_layout[7][x] = 1;
+            for (let x = 8; x < 12; x++) tile_layout[4][x] = 1;
+
+            // Hazards
+            hazard_zones.push({ type: 'lava', x: 6 * TILE_SIZE, y: 13 * TILE_SIZE, width: 8 * TILE_SIZE, height: TILE_SIZE });
+            hazard_zones.push({ type: 'poison', x: 9 * TILE_SIZE, y: 9 * TILE_SIZE, width: 2 * TILE_SIZE, height: TILE_SIZE });
+
+            // Gems
+            gem_collection.red = [
+                { x: 4 * TILE_SIZE + 15, y: 11 * TILE_SIZE + 10, collected: false },
+                { x: 15 * TILE_SIZE + 15, y: 11 * TILE_SIZE + 10, collected: false }
+            ];
+            gem_collection.blue = [
+                { x: 5 * TILE_SIZE + 15, y: 6 * TILE_SIZE + 10, collected: false },
+                { x: 14 * TILE_SIZE + 15, y: 6 * TILE_SIZE + 10, collected: false }
+            ];
+
+            // Exits
+            mechanism_state.doors = [
+                { type: 'fireExit', x: 8 * TILE_SIZE, y: 3 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2, open: true },
+                { type: 'waterExit', x: 10 * TILE_SIZE, y: 3 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2, open: true }
+            ];
+
+            entity_positions.fireboy = { x: 2 * TILE_SIZE, y: 11 * TILE_SIZE };
+            entity_positions.watergirl = { x: 16 * TILE_SIZE, y: 11 * TILE_SIZE };
+        }
+
+        function generateLevel3() {
+            // Challenging final level
+            for (let x = 2; x < 18; x++) tile_layout[13][x] = 1;
+            for (let x = 4; x < 8; x++) tile_layout[11][x] = 1;
+            for (let x = 12; x < 16; x++) tile_layout[11][x] = 1;
+            for (let x = 6; x < 14; x++) tile_layout[8][x] = 1;
+            for (let x = 2; x < 6; x++) tile_layout[5][x] = 1;
+            for (let x = 14; x < 18; x++) tile_layout[5][x] = 1;
+            for (let x = 8; x < 12; x++) tile_layout[2][x] = 1;
+
+            // Mixed hazards
+            hazard_zones.push({ type: 'lava', x: 2 * TILE_SIZE, y: 13 * TILE_SIZE, width: 5 * TILE_SIZE, height: TILE_SIZE });
+            hazard_zones.push({ type: 'water', x: 13 * TILE_SIZE, y: 13 * TILE_SIZE, width: 5 * TILE_SIZE, height: TILE_SIZE });
+            hazard_zones.push({ type: 'poison', x: 8 * TILE_SIZE, y: 7 * TILE_SIZE, width: 4 * TILE_SIZE, height: TILE_SIZE });
+
+            // Moving platform
+            mechanism_state.platforms = [
+                { x: 9 * TILE_SIZE, y: 10 * TILE_SIZE, width: 2 * TILE_SIZE, height: TILE_SIZE / 2, dy: 1, minY: 9 * TILE_SIZE, maxY: 12 * TILE_SIZE }
+            ];
+
+            // Gems
+            gem_collection.red = [
+                { x: 5 * TILE_SIZE + 15, y: 10 * TILE_SIZE + 10, collected: false },
+                { x: 14 * TILE_SIZE + 15, y: 4 * TILE_SIZE + 10, collected: false }
+            ];
+            gem_collection.blue = [
+                { x: 14 * TILE_SIZE + 15, y: 10 * TILE_SIZE + 10, collected: false },
+                { x: 5 * TILE_SIZE + 15, y: 4 * TILE_SIZE + 10, collected: false }
+            ];
+
+            // Exits
+            mechanism_state.doors = [
+                { type: 'fireExit', x: 8 * TILE_SIZE, y: 1 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2, open: true },
+                { type: 'waterExit', x: 10 * TILE_SIZE, y: 1 * TILE_SIZE, width: TILE_SIZE, height: TILE_SIZE * 2, open: true }
+            ];
+
+            entity_positions.fireboy = { x: 3 * TILE_SIZE, y: 12 * TILE_SIZE };
+            entity_positions.watergirl = { x: 16 * TILE_SIZE, y: 12 * TILE_SIZE };
+        }
+
+        // ========== INPUT HANDLER ==========
+        function input_handler() {
+            document.addEventListener('keydown', (e) => {
+                switch (e.key.toLowerCase()) {
+                    case 'w': input_keys.fireboy.up = true; break;
+                    case 'a': input_keys.fireboy.left = true; break;
+                    case 'd': input_keys.fireboy.right = true; break;
+                    case 'arrowup': input_keys.watergirl.up = true; break;
+                    case 'arrowleft': input_keys.watergirl.left = true; break;
+                    case 'arrowright': input_keys.watergirl.right = true; break;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                switch (e.key.toLowerCase()) {
+                    case 'w': input_keys.fireboy.up = false; break;
+                    case 'a': input_keys.fireboy.left = false; break;
+                    case 'd': input_keys.fireboy.right = false; break;
+                    case 'arrowup': input_keys.watergirl.up = false; break;
+                    case 'arrowleft': input_keys.watergirl.left = false; break;
+                    case 'arrowright': input_keys.watergirl.right = false; break;
+                }
+            });
+        }
+
+        // ========== GRAVITY SYSTEM ==========
+        function gravity_system(player) {
+            if (!player_state[player].alive) return;
+            velocity_vectors[player].vy += level_config.gravity;
+            if (velocity_vectors[player].vy > level_config.maxFallSpeed) {
+                velocity_vectors[player].vy = level_config.maxFallSpeed;
+            }
+        }
+
+        // ========== IMPULSE HANDLER ==========
+        function impulse_handler(player) {
+            if (!player_state[player].alive) return;
+            if (input_keys[player].up && isOnGround(player)) {
+                velocity_vectors[player].vy = level_config.jumpForce;
+            }
+        }
+
+        function isOnGround(player) {
+            const pos = entity_positions[player];
+            const checkY = pos.y + TILE_SIZE + 1;
+            const tileX = Math.floor((pos.x + TILE_SIZE / 2) / TILE_SIZE);
+            const tileY = Math.floor(checkY / TILE_SIZE);
+
+            if (tileY >= GRID_HEIGHT || tileY < 0) return false;
+            if (tileX >= GRID_WIDTH || tileX < 0) return false;
+            if (tile_layout[tileY] && tile_layout[tileY][tileX]) return true;
+
+            // Check moving platforms
+            for (let plat of mechanism_state.platforms) {
+                if (pos.x + TILE_SIZE > plat.x && pos.x < plat.x + plat.width &&
+                    checkY >= plat.y && checkY <= plat.y + plat.height + 5) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // ========== MOVEMENT CONTROLLER ==========
+        function MovementController(player) {
+            if (!player_state[player].alive) return;
+
+            if (input_keys[player].left) {
+                velocity_vectors[player].vx = -level_config.moveSpeed;
+            } else if (input_keys[player].right) {
+                velocity_vectors[player].vx = level_config.moveSpeed;
+            } else {
+                velocity_vectors[player].vx *= level_config.friction;
+                if (Math.abs(velocity_vectors[player].vx) < 0.1) {
+                    velocity_vectors[player].vx = 0;
+                }
+            }
+        }
+
+        // ========== KINEMATIC INTEGRATOR ==========
+        function kinematic_integrator(player) {
+            if (!player_state[player].alive) return;
+
+            const newX = entity_positions[player].x + velocity_vectors[player].vx;
+            const newY = entity_positions[player].y + velocity_vectors[player].vy;
+
+            // Horizontal collision
+            if (!checkCollision(newX, entity_positions[player].y, player)) {
+                entity_positions[player].x = newX;
+            } else {
+                velocity_vectors[player].vx = 0;
+            }
+
+            // Vertical collision
+            if (!checkCollision(entity_positions[player].x, newY, player)) {
+                entity_positions[player].y = newY;
+            } else {
+                if (velocity_vectors[player].vy > 0) {
+                    // Snap to ground
+                    entity_positions[player].y = Math.floor(newY / TILE_SIZE) * TILE_SIZE - TILE_SIZE + 1;
+                }
+                velocity_vectors[player].vy = 0;
+            }
+
+            // Clamp to bounds
+            entity_positions[player].x = Math.max(TILE_SIZE, Math.min(entity_positions[player].x, CANVAS_WIDTH - TILE_SIZE * 2));
+            entity_positions[player].y = Math.max(TILE_SIZE, Math.min(entity_positions[player].y, CANVAS_HEIGHT - TILE_SIZE * 2));
+        }
+
+        function checkCollision(x, y, player) {
+            const corners = [
+                { x: x + 4, y: y + 4 },
+                { x: x + TILE_SIZE - 4, y: y + 4 },
+                { x: x + 4, y: y + TILE_SIZE - 4 },
+                { x: x + TILE_SIZE - 4, y: y + TILE_SIZE - 4 }
+            ];
+
+            for (let corner of corners) {
+                const tileX = Math.floor(corner.x / TILE_SIZE);
+                const tileY = Math.floor(corner.y / TILE_SIZE);
+
+                if (tileX < 0 || tileX >= GRID_WIDTH || tileY < 0 || tileY >= GRID_HEIGHT) continue;
+                if (tile_layout[tileY] && tile_layout[tileY][tileX]) return true;
+            }
+
+            // Check doors (closed)
+            for (let door of mechanism_state.doors) {
+                if (!door.open && door.type !== 'fireExit' && door.type !== 'waterExit') {
+                    if (x + TILE_SIZE > door.x && x < door.x + door.width &&
+                        y + TILE_SIZE > door.y && y < door.y + door.height) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // ========== COLLISION DETECTOR ==========
+        function collision_detector(player) {
+            if (!player_state[player].alive) return;
+
+            const pos = entity_positions[player];
+            const center = { x: pos.x + TILE_SIZE / 2, y: pos.y + TILE_SIZE / 2 };
+
+            // Check hazards
+            for (let hazard of hazard_zones) {
+                if (center.x > hazard.x && center.x < hazard.x + hazard.width &&
+                    center.y > hazard.y && center.y < hazard.y + hazard.height) {
+                    ElementalAffinity(player, hazard.type);
+                }
+            }
+
+            // Check gems
+            const gems = player === 'fireboy' ? gem_collection.red : gem_collection.blue;
+            GemCollector(player, gems);
+
+            // Check exits
+            for (let door of mechanism_state.doors) {
+                if ((player === 'fireboy' && door.type === 'fireExit') ||
+                    (player === 'watergirl' && door.type === 'waterExit')) {
+                    if (pos.x + TILE_SIZE > door.x && pos.x < door.x + door.width &&
+                        pos.y + TILE_SIZE > door.y && pos.y < door.y + door.height) {
+                        player_state[player].atExit = true;
+                    }
+                }
+            }
+        }
+
+        // ========== ELEMENTAL AFFINITY ==========
+        function ElementalAffinity(player, hazardType) {
+            if (player === 'fireboy') {
+                if (hazardType === 'water' || hazardType === 'poison') {
+                    CharacterState(player, 'dead');
+                }
+                // Fireboy is immune to lava
+            } else {
+                if (hazardType === 'lava' || hazardType === 'poison') {
+                    CharacterState(player, 'dead');
+                }
+                // Watergirl is immune to water
+            }
+        }
+
+        // ========== GEM COLLECTOR ==========
+        function GemCollector(player, gems) {
+            const pos = entity_positions[player];
+            for (let gem of gems) {
+                if (!gem.collected) {
+                    const dist = Math.hypot(pos.x + TILE_SIZE / 2 - gem.x - 10, pos.y + TILE_SIZE / 2 - gem.y - 10);
+                    if (dist < 30) {
+                        gem.collected = true;
+                    }
+                }
+            }
+        }
+
+        // ========== CHARACTER STATE ==========
+        function CharacterState(player, state) {
+            if (state === 'dead') {
+                player_state[player].alive = false;
+                player_state[player].atExit = false;
+            }
+        }
+
+        // ========== MECHANISM CONTROLLER ==========
+        function mechanism_controller() {
+            // Animate moving platforms
+            for (let plat of mechanism_state.platforms) {
+                plat.y += plat.dy * 0.5;
+                if (plat.y <= plat.minY || plat.y >= plat.maxY) {
+                    plat.dy *= -1;
+                }
+            }
+        }
+
+        // ========== GAME FLOW ==========
+        function game_flow() {
+            // Check win condition
+            if (player_state.fireboy.atExit && player_state.watergirl.atExit) {
+                game_state.status = 'win';
+                showMessage('Level Complete!', 'Both characters reached the exits!', 'win');
+            }
+
+            // Check lose condition
+            if (!player_state.fireboy.alive || !player_state.watergirl.alive) {
+                game_state.status = 'lose';
+                showMessage('Level Failed', 'One of the characters died!', 'lose');
+            }
+        }
+
+        function showMessage(title, sub, type) {
+            const overlay = document.getElementById('messageOverlay');
+            const titleEl = document.getElementById('messageTitle');
+            const subEl = document.getElementById('messageSub');
+            const btn = document.getElementById('continueBtn');
+
+            titleEl.textContent = title;
+            titleEl.className = 'message-title ' + type;
+            subEl.textContent = sub;
+
+            if (type === 'win') {
+                btn.textContent = game_state.currentLevel < game_state.totalLevels ? 'Next Level' : 'Play Again';
+            } else {
+                btn.textContent = 'Retry';
+            }
+
+            overlay.classList.add('visible');
+        }
+
+        function nextLevel() {
+            const overlay = document.getElementById('messageOverlay');
+            overlay.classList.remove('visible');
+
+            if (game_state.status === 'win') {
+                if (game_state.currentLevel < game_state.totalLevels) {
+                    game_state.currentLevel++;
+                } else {
+                    game_state.currentLevel = 1;
+                }
+            }
+
+            game_state.status = 'playing';
+            player_state.fireboy = { alive: true, atExit: false };
+            player_state.watergirl = { alive: true, atExit: false };
+            velocity_vectors.fireboy = { vx: 0, vy: 0 };
+            velocity_vectors.watergirl = { vx: 0, vy: 0 };
+
+            document.getElementById('levelDisplay').textContent = game_state.currentLevel;
+
+            level_generator();
+        }
+
+        // ========== RENDERER ==========
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function render() {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Background gradient
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+            bgGrad.addColorStop(0, '#0d0d18');
+            bgGrad.addColorStop(1, '#1a1a28');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Grid pattern
+            ctx.strokeStyle = 'rgba(50, 50, 70, 0.3)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= GRID_WIDTH; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * TILE_SIZE, 0);
+                ctx.lineTo(x * TILE_SIZE, CANVAS_HEIGHT);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= GRID_HEIGHT; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * TILE_SIZE);
+                ctx.lineTo(CANVAS_WIDTH, y * TILE_SIZE);
+                ctx.stroke();
+            }
+
+            // Render tiles
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (tile_layout[y] && tile_layout[y][x]) {
+                        const tileGrad = ctx.createLinearGradient(
+                            x * TILE_SIZE, y * TILE_SIZE,
+                            x * TILE_SIZE, (y + 1) * TILE_SIZE
+                        );
+                        tileGrad.addColorStop(0, '#2a2a3a');
+                        tileGrad.addColorStop(1, '#1a1a2a');
+                        ctx.fillStyle = tileGrad;
+                        ctx.fillRect(x * TILE_SIZE + 1, y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+
+                        // Tile edge highlight
+                        ctx.strokeStyle = '#3a3a4a';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x * TILE_SIZE + 1, y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+                    }
+                }
+            }
+
+            // Render hazards
+            for (let hazard of hazard_zones) {
+                let grad;
+                if (hazard.type === 'lava') {
+                    grad = ctx.createLinearGradient(hazard.x, hazard.y, hazard.x, hazard.y + hazard.height);
+                    grad.addColorStop(0, '#ff4400');
+                    grad.addColorStop(0.5, '#ff6600');
+                    grad.addColorStop(1, '#cc2200');
+                    ctx.fillStyle = grad;
+
+                    // Animated lava surface
+                    ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+
+                    // Lava bubbles
+                    ctx.fillStyle = '#ff8800';
+                    for (let i = 0; i < 5; i++) {
+                        const bx = hazard.x + (i * hazard.width / 5) + Math.sin(animationTime * 3 + i) * 5;
+                        const by = hazard.y + 5 + Math.cos(animationTime * 4 + i) * 3;
+                        ctx.beginPath();
+                        ctx.arc(bx, by, 4 + Math.sin(animationTime * 5 + i) * 2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                } else if (hazard.type === 'water') {
+                    grad = ctx.createLinearGradient(hazard.x, hazard.y, hazard.x, hazard.y + hazard.height);
+                    grad.addColorStop(0, '#0088ff');
+                    grad.addColorStop(0.5, '#00aaff');
+                    grad.addColorStop(1, '#0066cc');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+
+                    // Water ripples
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.lineWidth = 1;
+                    for (let i = 0; i < 3; i++) {
+                        const rx = hazard.x + hazard.width / 2;
+                        const ry = hazard.y + 5;
+                        ctx.beginPath();
+                        ctx.ellipse(rx, ry, 10 + i * 8 + Math.sin(animationTime * 2) * 3, 3, 0, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                } else if (hazard.type === 'poison') {
+                    grad = ctx.createLinearGradient(hazard.x, hazard.y, hazard.x, hazard.y + hazard.height);
+                    grad.addColorStop(0, '#44cc00');
+                    grad.addColorStop(0.5, '#66ff00');
+                    grad.addColorStop(1, '#229900');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+
+                    // Poison bubbles
+                    ctx.fillStyle = 'rgba(150, 255, 100, 0.5)';
+                    for (let i = 0; i < 4; i++) {
+                        const bx = hazard.x + (i * hazard.width / 4) + 10;
+                        const by = hazard.y + Math.sin(animationTime * 2 + i * 2) * 5 + 10;
+                        ctx.beginPath();
+                        ctx.arc(bx, by, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // Render platforms
+            for (let plat of mechanism_state.platforms) {
+                const platGrad = ctx.createLinearGradient(plat.x, plat.y, plat.x, plat.y + plat.height);
+                platGrad.addColorStop(0, '#4a4a5a');
+                platGrad.addColorStop(1, '#3a3a4a');
+                ctx.fillStyle = platGrad;
+                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+                ctx.strokeStyle = '#5a5a6a';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(plat.x, plat.y, plat.width, plat.height);
+            }
+
+            // Render doors/exits
+            for (let door of mechanism_state.doors) {
+                if (door.type === 'fireExit') {
+                    ctx.fillStyle = '#ff6600';
+                    ctx.fillRect(door.x, door.y, door.width, door.height);
+                    ctx.fillStyle = '#ffaa00';
+                    ctx.fillRect(door.x + 5, door.y + 5, door.width - 10, door.height - 10);
+                    // Fire icon
+                    ctx.fillStyle = '#ff4400';
+                    ctx.beginPath();
+                    ctx.moveTo(door.x + door.width / 2, door.y + 10);
+                    ctx.lineTo(door.x + door.width / 2 - 10, door.y + door.height - 10);
+                    ctx.lineTo(door.x + door.width / 2 + 10, door.y + door.height - 10);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (door.type === 'waterExit') {
+                    ctx.fillStyle = '#0088ff';
+                    ctx.fillRect(door.x, door.y, door.width, door.height);
+                    ctx.fillStyle = '#00ccff';
+                    ctx.fillRect(door.x + 5, door.y + 5, door.width - 10, door.height - 10);
+                    // Water drop icon
+                    ctx.fillStyle = '#0044aa';
+                    ctx.beginPath();
+                    ctx.moveTo(door.x + door.width / 2, door.y + 8);
+                    ctx.quadraticCurveTo(door.x + door.width / 2 - 8, door.y + door.height / 2, door.x + door.width / 2, door.y + door.height - 8);
+                    ctx.quadraticCurveTo(door.x + door.width / 2 + 8, door.y + door.height / 2, door.x + door.width / 2, door.y + 8);
+                    ctx.fill();
+                }
+            }
+
+            // Render gems
+            for (let gem of gem_collection.red) {
+                if (!gem.collected) {
+                    drawGem(gem.x, gem.y, '#ff3300', '#ff6600');
+                }
+            }
+            for (let gem of gem_collection.blue) {
+                if (!gem.collected) {
+                    drawGem(gem.x, gem.y, '#0066ff', '#00aaff');
+                }
+            }
+
+            // Render Fireboy
+            if (player_state.fireboy.alive) {
+                drawFireboy();
+            }
+
+            // Render Watergirl
+            if (player_state.watergirl.alive) {
+                drawWatergirl();
+            }
+
+            // Update HUD
+            const redGems = gem_collection.red.filter(g => g.collected).length;
+            const blueGems = gem_collection.blue.filter(g => g.collected).length;
+            document.getElementById('fireboyGems').textContent = `Red Gems: ${redGems}/${gem_collection.red.length}`;
+            document.getElementById('watergirlGems').textContent = `Blue Gems: ${blueGems}/${gem_collection.blue.length}`;
+        }
+
+        function drawGem(x, y, color1, color2) {
+            const grad = ctx.createRadialGradient(x + 10, y + 10, 0, x + 10, y + 10, 15);
+            grad.addColorStop(0, color2);
+            grad.addColorStop(1, color1);
+            ctx.fillStyle = grad;
+
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y);
+            ctx.lineTo(x + 20, y + 10);
+            ctx.lineTo(x + 10, y + 20);
+            ctx.lineTo(x, y + 10);
+            ctx.closePath();
+            ctx.fill();
+
+            // Shine
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y + 3);
+            ctx.lineTo(x + 15, y + 8);
+            ctx.lineTo(x + 10, y + 13);
+            ctx.lineTo(x + 5, y + 8);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawFireboy() {
+            const pos = entity_positions.fireboy;
+            const vx = velocity_vectors.fireboy.vx;
+
+            // Walking animation offset
+            const walkOffset = Math.abs(vx) > 0.5 ? Math.sin(animationTime * 10) * 2 : 0;
+
+            // Glow
+            const glow = ctx.createRadialGradient(
+                pos.x + TILE_SIZE / 2, pos.y + TILE_SIZE / 2, 0,
+                pos.x + TILE_SIZE / 2, pos.y + TILE_SIZE / 2, TILE_SIZE
+            );
+            glow.addColorStop(0, 'rgba(255, 100, 0, 0.3)');
+            glow.addColorStop(1, 'rgba(255, 100, 0, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(pos.x - 10, pos.y - 10, TILE_SIZE + 20, TILE_SIZE + 20);
+
+            // Body
+            const bodyGrad = ctx.createLinearGradient(pos.x, pos.y, pos.x + TILE_SIZE, pos.y + TILE_SIZE);
+            bodyGrad.addColorStop(0, '#ff6600');
+            bodyGrad.addColorStop(0.5, '#ff4400');
+            bodyGrad.addColorStop(1, '#cc2200');
+            ctx.fillStyle = bodyGrad;
+
+            // Main body shape (flame-like)
+            ctx.beginPath();
+            ctx.moveTo(pos.x + TILE_SIZE / 2, pos.y + walkOffset);
+            ctx.bezierCurveTo(pos.x + TILE_SIZE + 5, pos.y + 10, pos.x + TILE_SIZE - 5, pos.y + TILE_SIZE, pos.x + TILE_SIZE / 2, pos.y + TILE_SIZE);
+            ctx.bezierCurveTo(pos.x - 5, pos.y + TILE_SIZE, pos.x + 5, pos.y + 10, pos.x + TILE_SIZE / 2, pos.y + walkOffset);
+            ctx.fill();
+
+            // Inner flame
+            ctx.fillStyle = '#ffaa00';
+            ctx.beginPath();
+            ctx.moveTo(pos.x + TILE_SIZE / 2, pos.y + 8 + walkOffset);
+            ctx.bezierCurveTo(pos.x + TILE_SIZE - 10, pos.y + 15, pos.x + TILE_SIZE - 12, pos.y + TILE_SIZE - 5, pos.x + TILE_SIZE / 2, pos.y + TILE_SIZE - 5);
+            ctx.bezierCurveTo(pos.x + 12, pos.y + TILE_SIZE - 5, pos.x + 10, pos.y + 15, pos.x + TILE_SIZE / 2, pos.y + 8 + walkOffset);
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(pos.x + 14, pos.y + 18 + walkOffset * 0.5, 4, 0, Math.PI * 2);
+            ctx.arc(pos.x + 26, pos.y + 18 + walkOffset * 0.5, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(pos.x + 14, pos.y + 18 + walkOffset * 0.5, 2, 0, Math.PI * 2);
+            ctx.arc(pos.x + 26, pos.y + 18 + walkOffset * 0.5, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Flame particles
+            for (let i = 0; i < 3; i++) {
+                const px = pos.x + TILE_SIZE / 2 + Math.sin(animationTime * 5 + i * 2) * 8;
+                const py = pos.y - 5 - i * 5 - Math.abs(Math.sin(animationTime * 8 + i)) * 3;
+                const size = 4 - i;
+                ctx.fillStyle = `rgba(255, ${150 + i * 30}, 0, ${0.8 - i * 0.2})`;
+                ctx.beginPath();
+                ctx.arc(px, py, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawWatergirl() {
+            const pos = entity_positions.watergirl;
+            const vx = velocity_vectors.watergirl.vx;
+
+            // Walking animation offset
+            const walkOffset = Math.abs(vx) > 0.5 ? Math.sin(animationTime * 10) * 2 : 0;
+
+            // Glow
+            const glow = ctx.createRadialGradient(
+                pos.x + TILE_SIZE / 2, pos.y + TILE_SIZE / 2, 0,
+                pos.x + TILE_SIZE / 2, pos.y + TILE_SIZE / 2, TILE_SIZE
+            );
+            glow.addColorStop(0, 'rgba(0, 150, 255, 0.3)');
+            glow.addColorStop(1, 'rgba(0, 150, 255, 0)');
+            ctx.fillStyle = glow;
+            ctx.fillRect(pos.x - 10, pos.y - 10, TILE_SIZE + 20, TILE_SIZE + 20);
+
+            // Body
+            const bodyGrad = ctx.createLinearGradient(pos.x, pos.y, pos.x + TILE_SIZE, pos.y + TILE_SIZE);
+            bodyGrad.addColorStop(0, '#00aaff');
+            bodyGrad.addColorStop(0.5, '#0088ff');
+            bodyGrad.addColorStop(1, '#0055cc');
+            ctx.fillStyle = bodyGrad;
+
+            // Main body shape (crystal/ice-like)
+            ctx.beginPath();
+            ctx.moveTo(pos.x + 5, pos.y + 5 + walkOffset);
+            ctx.lineTo(pos.x + TILE_SIZE - 5, pos.y + 5 + walkOffset);
+            ctx.quadraticCurveTo(pos.x + TILE_SIZE + 3, pos.y + TILE_SIZE / 2, pos.x + TILE_SIZE - 5, pos.y + TILE_SIZE - 5);
+            ctx.lineTo(pos.x + 5, pos.y + TILE_SIZE - 5);
+            ctx.quadraticCurveTo(pos.x - 3, pos.y + TILE_SIZE / 2, pos.x + 5, pos.y + 5 + walkOffset);
+            ctx.fill();
+
+            // Inner ice crystal
+            ctx.fillStyle = 'rgba(100, 200, 255, 0.6)';
+            ctx.beginPath();
+            ctx.moveTo(pos.x + TILE_SIZE / 2, pos.y + 10 + walkOffset);
+            ctx.lineTo(pos.x + TILE_SIZE - 10, pos.y + TILE_SIZE / 2);
+            ctx.lineTo(pos.x + TILE_SIZE / 2, pos.y + TILE_SIZE - 10);
+            ctx.lineTo(pos.x + 10, pos.y + TILE_SIZE / 2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(pos.x + 14, pos.y + 18 + walkOffset * 0.5, 4, 0, Math.PI * 2);
+            ctx.arc(pos.x + 26, pos.y + 18 + walkOffset * 0.5, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#003366';
+            ctx.beginPath();
+            ctx.arc(pos.x + 14, pos.y + 18 + walkOffset * 0.5, 2, 0, Math.PI * 2);
+            ctx.arc(pos.x + 26, pos.y + 18 + walkOffset * 0.5, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Frost particles
+            for (let i = 0; i < 4; i++) {
+                const angle = (animationTime * 2 + i * Math.PI / 2) % (Math.PI * 2);
+                const px = pos.x + TILE_SIZE / 2 + Math.cos(angle) * 25;
+                const py = pos.y + TILE_SIZE / 2 + Math.sin(angle) * 25;
+                ctx.fillStyle = 'rgba(150, 220, 255, 0.6)';
+                ctx.beginPath();
+                ctx.arc(px, py, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Ice crystal on head
+            ctx.fillStyle = '#66ddff';
+            ctx.beginPath();
+            ctx.moveTo(pos.x + TILE_SIZE / 2, pos.y - 5 + walkOffset);
+            ctx.lineTo(pos.x + TILE_SIZE / 2 - 5, pos.y + 5 + walkOffset);
+            ctx.lineTo(pos.x + TILE_SIZE / 2 + 5, pos.y + 5 + walkOffset);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // ========== GAME LOOP ==========
+        function gameLoop() {
+            animationTime += 0.016;
+
+            if (game_state.status === 'playing') {
+                // Update physics for both players
+                for (let player of ['fireboy', 'watergirl']) {
+                    gravity_system(player);
+                    impulse_handler(player);
+                    MovementController(player);
+                    kinematic_integrator(player);
+                    collision_detector(player);
+                }
+
+                mechanism_controller();
+                game_flow();
+            }
+
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ========== INITIALIZATION ==========
+        function init() {
+            input_handler();
+            level_generator();
+
+            document.getElementById('continueBtn').addEventListener('click', nextLevel);
+
+            document.getElementById('levelDisplay').textContent = game_state.currentLevel;
+
+            gameLoop();
+        }
+
+        // Start the game
+        init();
+    </script>
+</body>
+</html>

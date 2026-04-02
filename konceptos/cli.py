@@ -496,8 +496,15 @@ def resolve(kind, id):
 @cli.command('evolve')
 @click.argument('n', default=1)
 @click.option('--all', 'is_all', is_flag=True, help='Evolve all RW cells')
-def evolve(n, is_all):
-    """Automatically evolve (split) RW cells. Default 1 step, or --all."""
+@click.option('--skip-refine', is_flag=True, help='Skip LLM refinement, only split objects')
+def evolve(n, is_all, skip_refine):
+    """Automatically evolve (split) RW cells. Default 1 step, or --all.
+
+    Strategy:
+    1. For each RW cell, ask LLM to refine it to R or W with reasoning (if not --skip-refine).
+       If LLM succeeds → update the cell (RW count decreases).
+    2. If LLM can't refine (still ambiguous) → split the parent object.
+    """
     e = _engine()
     llm = LLM()
     if not e.concepts: e.compute()
@@ -508,14 +515,48 @@ def evolve(n, is_all):
     for step in range(1, mx + 1):
         cells = e.rw_cells()
         if not cells: _ok('RW=0!'); break
+
+        # Step 1: Try to refine each RW cell individually with LLM reasoning
+        refined = 0
+        if not skip_refine and llm.ok:
+            # Build context about the whole system
+            sys_context = 'System objects: %s' % ', '.join(
+                '%s (%s)' % (e.objects[o]['name'], e.objects[o].get('desc', '')[:60])
+                for o in sorted(e.objects)
+            )
+            to_remove = []
+            for oid, aid in cells:
+                on = e.objects.get(oid, {}).get('name', '?')
+                an = e.attributes.get(aid, {}).get('name', '?')
+                pv = e.incidence.get((oid, aid), 'RW')
+                result = e.refine_rw_cell(oid, aid, pv, llm, sys_context)
+                if result and result in ('R', 'W', '0') and result != pv:
+                    e.set_i(oid, aid, result)
+                    refined += 1
+                    _cyan('  [%d] %s.%s: RW → %s  ("%s")' % (
+                        step, on, an, result,
+                        e.incidence_reasoning.get((oid, aid), {}).get('reasoning', '')[:60]
+                    ))
+                    to_remove.append((oid, aid))
+            for c in to_remove: cells.remove(c)
+            e.compute()
+            new_rw = e.rw_count()
+            if refined > 0:
+                _ok('  refine: RW %d→%d (%d cells clarified)' % (rw, new_rw, refined))
+            rw = new_rw
+
+        if not cells: _ok('RW=0!'); break
+
+        # Step 2: If still RW cells, split the object with most RW
         obj_rw = {}
         for o, a in cells: obj_rw[o] = obj_rw.get(o, 0) + 1
         worst = max(obj_rw, key=obj_rw.get); oname = e.objects[worst]['name']
         ch = e.seed_chain.suggest_split(oname, e.objects[worst].get('desc', ''), 'obj')
         if ch:
-            _cyan('[%d] %s → %s (seed)' % (step, oname, ', '.join(c['name'] for c in ch)))
+            _cyan('[%d] split %s → %s (seed)' % (step, oname, ', '.join(c['name'] for c in ch)))
         else:
-            _info('[%d] %s (LLM)...' % (step, oname))
+            if not llm.ok: _err('LLM not available for split.'); break
+            _info('[%d] split %s (LLM)...' % (step, oname))
             vocab = e.seed.obj_vocab or None
             r = llm.ask_expansion(oname, e.objects[worst].get('desc', ''), 'object', vocab)
             d, _ = extract_json(r)
@@ -524,8 +565,9 @@ def evolve(n, is_all):
             _cyan('    → %s' % ', '.join(c['name'] for c in ch))
         e.resolve(worst, 'obj', ch, llm); e.compute()
         new_rw = e.rw_count()
-        _ok('    RW: %d→%d |G|=%d' % (rw, new_rw, len(e.objects))) if new_rw < rw else _warn('    RW: %d→%d |G|=%d' % (rw, new_rw, len(e.objects)))
+        _ok('  split: RW %d→%d |G|=%d' % (rw, new_rw, len(e.objects))) if new_rw < rw else _warn('  split: RW %d→%d |G|=%d' % (rw, new_rw, len(e.objects)))
         rw = new_rw
+
     nid = e.commit('evolve %d steps RW %d→%d' % (step, init_rw, e.rw_count()))
     _ensure_dir(); e.save_workspace(WORKSPACE_DIR)
     _ok('RW %d→%d  node=%s' % (init_rw, e.rw_count(), nid))

@@ -12,12 +12,12 @@ def k_hash(objects,attributes,incidence,schemas):
 
 class DAGNode:
     __slots__=('nid','objects','attributes','incidence','schemas','conventions',
-               'impls','comments','seed_dict','ts')
+               'impls','comments','seed_dict','ts','incidence_reasoning')
     def __init__(self,obj,attr,inc,sch,conv='',seed_d=None):
         self.objects=copy.deepcopy(obj);self.attributes=copy.deepcopy(attr)
         self.incidence=dict(inc);self.schemas=dict(sch)
         self.conventions=conv;self.seed_dict=seed_d or {}
-        self.impls={};self.comments=[]
+        self.impls={};self.comments=[];self.incidence_reasoning={}
         self.nid=k_hash(obj,attr,inc,sch)
         self.ts=time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -49,7 +49,8 @@ class DAG:
             nd[h]={'objects':n.objects,'attributes':n.attributes,
                 'incidence':{'%s|%s'%(o,a):v for (o,a),v in n.incidence.items()},
                 'schemas':n.schemas,'conventions':n.conventions,'seed':n.seed_dict,
-                'impls':n.impls,'comments':n.comments,'ts':n.ts}
+                'impls':n.impls,'comments':n.comments,'ts':n.ts,
+                'incidence_reasoning':n.incidence_reasoning}
         return {'nodes':nd,'edges':self.edges,'root':self.root}
     def from_dict(self,d):
         self.nodes={};self.edges=d.get('edges',[]);self.root=d.get('root')
@@ -61,6 +62,7 @@ class DAG:
             n=DAGNode(nd['objects'],nd['attributes'],inc,nd.get('schemas',{}),
                       nd.get('conventions',''),nd.get('seed'))
             n.nid=h;n.impls=nd.get('impls',{});n.comments=nd.get('comments',[]);n.ts=nd.get('ts','')
+            n.incidence_reasoning=nd.get('incidence_reasoning',{})
             self.nodes[h]=n
 
 
@@ -72,6 +74,7 @@ class Engine:
         self.history=[];self.seed=JsonSeed();self.seed_chain=SeedChain()
         self.dag=DAG();self.current_node=None;self.impls={};self.dirty=False
         self._watchers=[];self._batch=False
+        self.incidence_reasoning={}  # {(oid,aid): {'direction':..., 'reasoning':...}}
 
     def _mark_dirty(self):
         self.dirty=True
@@ -116,6 +119,25 @@ class Engine:
     def set_schema(self,aid,s):
         if aid not in self.attributes: raise ValueError('No attr: '+aid)
         self.schemas[aid]=s;self._mark_dirty()
+
+    def refine_rw_cell(self, oid, aid, pv, llm, context=''):
+        """Ask LLM to refine a single RW cell with reasoning. Returns direction."""
+        on = self.objects.get(oid, {}).get('name', oid)
+        od = self.objects.get(oid, {}).get('desc', '')
+        an = self.attributes.get(aid, {}).get('name', aid)
+        ad = self.attributes.get(aid, {}).get('desc', '')
+        result = llm.judge_cell(on, od, an, ad, context)
+        if result:
+            direction = result['direction']
+            reasoning = result['reasoning']
+            self.incidence_reasoning[(oid, aid)] = {
+                'direction': direction,
+                'reasoning': reasoning,
+                'parent_value': pv,
+                'ts': time.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            return direction
+        return pv  # fallback to parent value
 
     # ── Queries ──
     def involved(self,o,a): return self.incidence.get((o,a),'RW') in ('R','W','RW')
@@ -348,7 +370,7 @@ class Engine:
                 nid=ch.get('id','%s_%d'%(xid,i+1))
                 while nid in self.objects: nid+='_'
                 self.add_obj(nid,ch['name'],ch.get('desc',''));new_ids.append(nid)
-            pending=[];pairs=[]
+            pending=[]
             for nid in new_ids:
                 nn=self.objects[nid]['name'];nd=self.objects[nid].get('desc','')
                 for aid in list(self.attributes):
@@ -357,14 +379,15 @@ class Engine:
                     if pv=='0': self.set_i(nid,aid,'0');continue
                     h=self.seed_chain.suggest_direction(nn,nd,an,ad)
                     if h: self.set_i(nid,aid,h);continue
-                    pending.append((nid,aid,len(pairs),pv));pairs.append((nn,nd,an,ad))
-            if pairs and llm and llm.ok:
+                    pending.append((nid,aid,pv))
+            if pending and llm and llm.ok:
                 ctx="Splitting '%s' into: %s"%(self.objects.get(xid,{}).get('name',xid),
                     ', '.join(self.objects[n]['name'] for n in new_ids))
-                results=llm.judge_batch(pairs,ctx)
-                for nid,aid,idx,pv in pending: self.set_i(nid,aid,results.get(idx,pv))
+                for nid,aid,pv in pending:
+                    direction=self.refine_rw_cell(nid,aid,pv,llm,ctx)
+                    self.set_i(nid,aid,direction)
             else:
-                for nid,aid,idx,pv in pending: self.set_i(nid,aid,pv)
+                for nid,aid,pv in pending: self.set_i(nid,aid,pv)
             self.del_obj(xid)
         elif kind=='attr':
             if xid not in self.attributes: return []
@@ -373,7 +396,7 @@ class Engine:
                 nid=ch.get('id','%s_%d'%(xid,i+1))
                 while nid in self.attributes: nid+='_'
                 self.add_attr(nid,ch['name'],ch.get('desc',''));new_ids.append(nid)
-            pending=[];pairs=[]
+            pending=[]
             for oid in list(self.objects):
                 on=self.objects[oid]['name'];od=self.objects[oid].get('desc','')
                 pv=pinc.get((oid,xid),'RW')
@@ -384,14 +407,15 @@ class Engine:
                     nan=self.attributes[na]['name'];nad=self.attributes[na].get('desc','')
                     h=self.seed_chain.suggest_direction(on,od,nan,nad)
                     if h: self.set_i(oid,na,h);continue
-                    pending.append((oid,na,len(pairs),pv));pairs.append((on,od,nan,nad))
-            if pairs and llm and llm.ok:
+                    pending.append((oid,na,pv))
+            if pending and llm and llm.ok:
                 ctx="Splitting '%s' into: %s"%(self.attributes.get(xid,{}).get('name',xid),
                     ', '.join(self.attributes[n]['name'] for n in new_ids))
-                results=llm.judge_batch(pairs,ctx)
-                for oid,na,idx,pv in pending: self.set_i(oid,na,results.get(idx,pv))
+                for oid,na,pv in pending:
+                    direction=self.refine_rw_cell(oid,na,pv,llm,ctx)
+                    self.set_i(oid,na,direction)
             else:
-                for oid,na,idx,pv in pending: self.set_i(oid,na,pv)
+                for oid,na,pv in pending: self.set_i(oid,na,pv)
             self.del_attr(xid)
         self._mark_dirty()
         return new_ids
@@ -402,6 +426,7 @@ class Engine:
         node=DAGNode(self.objects,self.attributes,self.incidence,self.schemas,
                      self.conventions,self.seed.to_dict() if self.seed.has_content() else {})
         node.impls=copy.deepcopy(self.impls)
+        node.incidence_reasoning=copy.deepcopy(self.incidence_reasoning)
         nid=self.dag.add_node(node,self.current_node,desc)
         self.current_node=nid;self.dirty=False
         if was_dirty: self._notify_watchers()
@@ -485,6 +510,7 @@ class Engine:
         import os
         os.makedirs(workspace_dir, exist_ok=True)
         inc_serial = {'%s|%s' % (o, a): v for (o, a), v in self.incidence.items()}
+        ir_serial = {'%s|%s' % (o, a): v for (o, a), v in self.incidence_reasoning.items()}
         d = {
             'objects': self.objects,
             'attributes': self.attributes,
@@ -496,6 +522,7 @@ class Engine:
             'current_node': self.current_node,
             'dirty': self.dirty,
             'dag': self.dag.to_dict(),
+            'incidence_reasoning': ir_serial,
         }
         with open(workspace_dir + '/workspace.json', 'w', encoding='utf-8') as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
@@ -524,6 +551,11 @@ class Engine:
             self.seed_chain = SeedChain([self.seed])
         self.current_node = d.get('current_node')
         self.dirty = d.get('dirty', False)
+        self.incidence_reasoning = {}
+        for k, v in d.get('incidence_reasoning', {}).items():
+            p = k.split('|')
+            if len(p) == 2:
+                self.incidence_reasoning[(p[0], p[1])] = v
         if 'dag' in d:
             self.dag.from_dict(d['dag'])
         self.compute()
